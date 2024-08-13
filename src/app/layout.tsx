@@ -5,8 +5,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "zkCloudWorker Explorer",
-  description: "zkCloudWorker Explorer",
+  title: "Mina token launchpad",
+  description: "Mina token launchpad on zkCloudWorker",
 };
 
 export default function RootLayout({
