@@ -11,7 +11,7 @@ import {
   pinImageToArweave,
   pinStringToArweave,
 } from "@/lib/arweave";
-import { stat } from "fs";
+import { deployToken } from "@/lib/deploy";
 
 export default function LaunchTokenPageComponent() {
   const [tokenImage, setTokenImage] = useState<string | null>(null);
@@ -27,6 +27,8 @@ export default function LaunchTokenPageComponent() {
   const [arweaveStatus, setArweaveStatus] = useState<string>("");
   const [arweaveLink, setArweaveLink] = useState<string>("");
   const [deployStatus, setDeployStatus] = useState<string>("");
+  const [address, setAddress] = useState<string>("");
+  const [admin, setAdmin] = useState<string>("");
   const [mintStatus, setMintStatus] = useState<string>("");
   const [issuing, setIssuing] = useState<boolean>(false);
 
@@ -137,6 +139,14 @@ export default function LaunchTokenPageComponent() {
     }
 
     setArweaveLink(status.url);
+    const deployResult = await deployToken({
+      symbol: tokenSymbol,
+      uri: status.url,
+    });
+    setDeployStatus(deployResult.hash);
+    setAddress(deployResult.token);
+    setAdmin(deployResult.adminContract);
+    console.log("Deploy result:", deployResult);
     setIssuing(false);
   }
 
@@ -191,7 +201,7 @@ export default function LaunchTokenPageComponent() {
             </Button>
           </div>
           <p className="text-sm text-[#F9ECDE] mt-1">
-            JPEG/PNG/WEBP/GIF (Less than 4MB)
+            JPEG/PNG/WEBP/GIF (Less than 100kb)
           </p>
         </div>
 
@@ -317,6 +327,16 @@ export default function LaunchTokenPageComponent() {
         <div>
           <p className="text-sm text-[#F9ECDE] mt-1">
             Deploy hash: {deployStatus}
+          </p>
+        </div>
+        <div>
+          <p className="text-sm text-[#F9ECDE] mt-1">
+            Token address: {address}
+          </p>
+        </div>
+        <div>
+          <p className="text-sm text-[#F9ECDE] mt-1">
+            Admin contract address: {admin}
           </p>
         </div>
         <div>
