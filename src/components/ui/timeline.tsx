@@ -12,14 +12,33 @@ import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 
 export type TimelineItem = {
+  id: string;
   status: "success" | "warning" | "error" | "waiting" | "completed";
   title: string;
   description: React.ReactNode;
   date: Date;
 };
 
+export function updateTimelineItem(params: {
+  items: TimelineItem[];
+  id: string;
+  update: Partial<TimelineItem>;
+}) {
+  const { items, id, update } = params;
+  return items.map((item) => (item.id === id ? { ...item, ...update } : item));
+}
+
+export function deleteTimelineItem(params: {
+  items: TimelineItem[];
+  id: string;
+}) {
+  const { items, id } = params;
+  return items.filter((item) => item.id !== id);
+}
+
 export const exampleTimelineItems: TimelineItem[] = [
   {
+    id: "1",
     status: "completed",
     title: "Project Kickoff",
     description: (
@@ -34,6 +53,7 @@ export const exampleTimelineItems: TimelineItem[] = [
     date: new Date("2023-06-01T09:00:00"),
   },
   {
+    id: "2",
     status: "warning",
     title: "Design Review",
     description: (
@@ -48,6 +68,7 @@ export const exampleTimelineItems: TimelineItem[] = [
     date: new Date("2023-06-15T14:30:15"),
   },
   {
+    id: "3",
     status: "error",
     title: "Backend Integration",
     description: (
@@ -62,6 +83,7 @@ export const exampleTimelineItems: TimelineItem[] = [
     date: new Date("2023-07-01T11:15:30"),
   },
   {
+    id: "4",
     status: "waiting",
     title: "User Testing",
     description: (
@@ -76,6 +98,7 @@ export const exampleTimelineItems: TimelineItem[] = [
     date: new Date("2023-07-15T10:00:45"),
   },
   {
+    id: "5",
     status: "success",
     title: "Final Deployment",
     description: (
@@ -175,7 +198,7 @@ export function Timeline(params: TimelineProps) {
       <div className="space-y-3">
         {allItems.map((item, index) => (
           <div
-            key={item.title + item.description + item.date.toUTCString()}
+            key={item.id + item.date.toUTCString() + item.title}
             className="flex items-start"
           >
             <div
