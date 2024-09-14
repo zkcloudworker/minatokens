@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,6 +12,7 @@ import {
   pinStringToArweave,
 } from "@/lib/arweave";
 import { deployToken } from "@/lib/deploy";
+import { Timeline, TimelineItem } from "@/components/ui/timeline";
 
 export default function LaunchTokenPageComponent() {
   const [tokenImage, setTokenImage] = useState<string | null>(null);
@@ -24,13 +25,13 @@ export default function LaunchTokenPageComponent() {
   const [discord, setDiscord] = useState<string>("");
   const [initialMintAmount, setInitialMintAmount] = useState<string>("");
   const [initialMintAddress, setInitialMintAddress] = useState<string>("");
-  const [arweaveStatus, setArweaveStatus] = useState<string>("");
-  const [arweaveLink, setArweaveLink] = useState<string>("");
-  const [deployStatus, setDeployStatus] = useState<string>("");
-  const [address, setAddress] = useState<string>("");
-  const [admin, setAdmin] = useState<string>("");
-  const [mintStatus, setMintStatus] = useState<string>("");
   const [issuing, setIssuing] = useState<boolean>(false);
+  const [issued, setIssued] = useState<boolean>(false);
+  const [timelineItems, setTimeLineItems] = useState<TimelineItem[]>([]);
+  const [waitingItem, setWaitingItem] = useState<TimelineItem | undefined>(
+    undefined
+  );
+  const bottomRef = useRef<HTMLDivElement>(null);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -43,8 +44,31 @@ export default function LaunchTokenPageComponent() {
     }
   };
 
+  function logItem(item: TimelineItem) {
+    setTimeLineItems((items) => [...items, item]);
+  }
+
+  function logWaitingItem(params: {
+    title: string;
+    description: React.ReactNode;
+  }) {
+    setWaitingItem({
+      status: "waiting",
+      title: params.title,
+      description: params.description,
+      date: new Date(),
+    });
+  }
+
   async function handleIssueToken() {
     setIssuing(true);
+    setTimeLineItems([]);
+    logWaitingItem({
+      title: "Pinning token metadata to Arweave",
+      description: "Creating arweave transaction...",
+    });
+
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     console.log("Token Image:", tokenImage);
     console.log("Token Name:", tokenName);
     console.log("Token Symbol:", tokenSymbol);
@@ -86,14 +110,39 @@ export default function LaunchTokenPageComponent() {
     };
     const hash = await pinStringToArweave(JSON.stringify(json, null, 2));
     if (!hash) {
-      setArweaveStatus("Failed to pin data to Arweave");
+      logItem({
+        status: "error",
+        title: "Pinning token metadata to Arweave",
+        description: "Failed to pin data to Arweave",
+        date: new Date(),
+      });
+      setWaitingItem(undefined);
       setIssuing(false);
       return;
     }
-    setArweaveStatus(hash);
-    setArweaveLink(
-      "Waiting for Arweave transaction to be mined (can take few minutes)..."
-    );
+    logItem({
+      status: "success",
+      title: "Pinning token metadata to Arweave",
+      description: (
+        <>
+          Successfully sent the arweave transaction with hash{" "}
+          <a
+            href={`https://arscan.io/tx/${hash}`}
+            className="text-blue-500 hover:underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            hash
+          </a>
+          .
+        </>
+      ),
+      date: new Date(),
+    });
+    logWaitingItem({
+      title: "Waiting for Arweave transaction to be mined",
+      description: "It can take a few minutes for the transaction to be mined",
+    });
     let status = await arweaveTxStatus(hash);
     /*
 {
@@ -110,8 +159,13 @@ export default function LaunchTokenPageComponent() {
 }
     */
     if (!status.success) {
-      setArweaveStatus("Failed to pin data to Arweave");
-      setArweaveLink("");
+      logItem({
+        status: "error",
+        title: "Waiting for Arweave transaction to be mined",
+        description: "Failed to pin data to Arweave",
+        date: new Date(),
+      });
+      setWaitingItem(undefined);
       setIssuing(false);
       return;
     }
@@ -132,22 +186,104 @@ export default function LaunchTokenPageComponent() {
       !status.data?.confirmed?.number_of_confirmations ||
       Number(status.data?.confirmed?.number_of_confirmations) < 1
     ) {
-      setArweaveStatus("Failed to pin data to Arweave");
-      setArweaveLink("");
+      logItem({
+        status: "error",
+        title: "Waiting for Arweave transaction to be mined",
+        description: "Failed to pin data to Arweave",
+        date: new Date(),
+      });
+      setWaitingItem(undefined);
       setIssuing(false);
       return;
     }
+    logItem({
+      status: "success",
+      title: "Waiting for Arweave transaction to be mined",
+      description: (
+        <>
+          Successfully mined the arweave transaction with{" "}
+          {status.data?.confirmed?.number_of_confirmations} confirmations. View
+          the token metadata at{" "}
+          <a
+            href={status.url}
+            className="text-blue-500 hover:underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {status.url}
+          </a>
+          .
+        </>
+      ),
+      date: new Date(),
+    });
 
-    setArweaveLink(status.url);
+    logWaitingItem({
+      title: "Deploying token contract",
+      description: "Deploying the token contract to the blockchain",
+    });
     const deployResult = await deployToken({
       symbol: tokenSymbol,
       uri: status.url,
     });
-    setDeployStatus(deployResult.hash);
-    setAddress(deployResult.token);
-    setAdmin(deployResult.adminContract);
+    if (
+      !deployResult?.hash ||
+      deployResult?.hash.toLowerCase().startsWith("error")
+    ) {
+      logItem({
+        status: "error",
+        title: "Deploying token contract",
+        description: "Failed to deploy token contract",
+        date: new Date(),
+      });
+      setWaitingItem(undefined);
+      setIssuing(false);
+      return;
+    }
+    logItem({
+      status: "completed",
+      title: "Deployed token contract",
+      description: (
+        <>
+          Successfully deployed the token contract with hash{" "}
+          <a
+            href={`https://minascan.io/devnet/tx/${deployResult.hash}?type=zk-tx`}
+            className="text-blue-500 hover:underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <br />
+            {deployResult.hash}
+          </a>
+          <br />
+          to address{" "}
+          <a
+            href={`https://minascan.io/devnet/account/${deployResult.token}`}
+            className="text-blue-500 hover:underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {deployResult.hash}
+          </a>
+          <br />
+          and admin contract address{" "}
+          <a
+            href={`https://minascan.io/devnet/account/${deployResult.adminContract}`}
+            className="text-blue-500 hover:underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {deployResult.adminContract}
+          </a>
+          .
+        </>
+      ),
+      date: new Date(),
+    });
+    setWaitingItem(undefined);
     console.log("Deploy result:", deployResult);
     setIssuing(false);
+    setIssued(true);
   }
 
   return (
@@ -170,178 +306,162 @@ export default function LaunchTokenPageComponent() {
           <span>Fixed Issue Fee</span>
         </div>
       </div>
-
-      <div className="max-w-2xl mx-auto space-y-6">
-        <div>
-          <Label htmlFor="token-image">Token Image</Label>
-          <div className="mt-1 flex items-center space-x-4">
-            <div className="w-24 h-24 border-2 border-dashed border-[#F15B22] flex items-center justify-center rounded-lg overflow-hidden">
-              {tokenImage ? (
-                <img
-                  src={tokenImage}
-                  alt="Token"
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <span className="text-[#F15B22]">Upload</span>
-              )}
+      {!issuing && !issued && (
+        <div className="max-w-2xl mx-auto space-y-6">
+          <div>
+            <Label htmlFor="token-image">Token Image</Label>
+            <div className="mt-1 flex items-center space-x-4">
+              <div className="w-24 h-24 border-2 border-dashed border-[#F15B22] flex items-center justify-center rounded-lg overflow-hidden">
+                {tokenImage ? (
+                  <img
+                    src={tokenImage}
+                    alt="Token"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-[#F15B22]">Upload</span>
+                )}
+              </div>
+              <Input
+                id="token-image"
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                className="hidden"
+              />
+              <Button
+                onClick={() => document.getElementById("token-image")?.click()}
+                className="bg-[#F15B22] hover:bg-[#d14d1d] text-white"
+              >
+                Choose File
+              </Button>
             </div>
-            <Input
-              id="token-image"
-              type="file"
-              accept="image/*"
-              onChange={handleImageUpload}
-              className="hidden"
-            />
-            <Button
-              onClick={() => document.getElementById("token-image")?.click()}
-              className="bg-[#F15B22] hover:bg-[#d14d1d] text-white"
-            >
-              Choose File
-            </Button>
+            <p className="text-sm text-[#F9ECDE] mt-1">
+              JPEG/PNG/WEBP/GIF (Less than 100kb)
+            </p>
           </div>
-          <p className="text-sm text-[#F9ECDE] mt-1">
-            JPEG/PNG/WEBP/GIF (Less than 100kb)
-          </p>
-        </div>
 
-        <div>
-          <Label htmlFor="token-name">Token Name</Label>
-          <Input
-            id="token-name"
-            placeholder="Enter token name"
-            className="mt-1 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
-            value={tokenName}
-            onChange={(e) => setTokenName(e.target.value)}
-          />
-        </div>
-
-        <div>
-          <Label htmlFor="token-symbol">Token Symbol (max 6 characters)</Label>
-          <Input
-            id="token-symbol"
-            placeholder="Enter token symbol"
-            className="mt-1 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
-            value={tokenSymbol}
-            onChange={(e) => setTokenSymbol(e.target.value)}
-          />
-        </div>
-
-        <div>
-          <Label htmlFor="token-description">Token Description</Label>
-          <Textarea
-            id="token-description"
-            placeholder="Enter token description"
-            className="mt-1 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
-            value={tokenDescription}
-            onChange={(e) => setTokenDescription(e.target.value)}
-          />
-        </div>
-
-        <div>
-          <Label htmlFor="website">Website</Label>
-          <Input
-            id="website"
-            placeholder="Optional"
-            className="mt-1 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
-            value={website}
-            onChange={(e) => setWebsite(e.target.value)}
-          />
-        </div>
-
-        <div>
-          <Label htmlFor="telegram">Telegram</Label>
-          <Input
-            id="telegram"
-            placeholder="Optional"
-            className="mt-1 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
-            value={telegram}
-            onChange={(e) => setTelegram(e.target.value)}
-          />
-        </div>
-
-        <div>
-          <Label htmlFor="twitter">Twitter</Label>
-          <Input
-            id="twitter"
-            placeholder="Optional"
-            className="mt-1 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
-            value={twitter}
-            onChange={(e) => setTwitter(e.target.value)}
-          />
-        </div>
-
-        <div>
-          <Label htmlFor="discord">Discord</Label>
-          <Input
-            id="discord"
-            placeholder="Optional"
-            className="mt-1 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
-            value={discord}
-            onChange={(e) => setDiscord(e.target.value)}
-          />
-        </div>
-
-        <div>
-          <Label htmlFor="initial-mint">Initial Mint</Label>
-          <div className="relative mt-1">
+          <div>
+            <Label htmlFor="token-name">Token Name</Label>
             <Input
-              id="initial-mint-amount"
-              placeholder="Optional. Enter the amount"
-              className="pr-16 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
-              value={initialMintAmount}
-              onChange={(e) => setInitialMintAmount(e.target.value)}
+              id="token-name"
+              placeholder="Enter token name"
+              className="mt-1 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
+              value={tokenName}
+              onChange={(e) => setTokenName(e.target.value)}
             />
           </div>
-          <div className="relative mt-1">
+
+          <div>
+            <Label htmlFor="token-symbol">
+              Token Symbol (max 6 characters)
+            </Label>
             <Input
-              id="initial-mint-address"
-              placeholder="Optional. Enter the address (B62...)"
-              className="pr-16 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
-              value={initialMintAddress}
-              onChange={(e) => setInitialMintAddress(e.target.value)}
+              id="token-symbol"
+              placeholder="Enter token symbol"
+              className="mt-1 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
+              value={tokenSymbol}
+              onChange={(e) => setTokenSymbol(e.target.value)}
             />
           </div>
-          <p className="text-sm text-[#F9ECDE] mt-1">
-            Mint your token to this address immediately after issue
-          </p>
-        </div>
 
-        <Button
-          className="w-full bg-[#F15B22] hover:bg-[#d14d1d] text-white"
-          onClick={handleIssueToken}
-          disabled={issuing}
-        >
-          Issue Token
-        </Button>
-        <div>
-          <p className="text-sm text-[#F9ECDE] mt-1">
-            Arweave hash: {arweaveStatus}
-          </p>
+          <div>
+            <Label htmlFor="token-description">Token Description</Label>
+            <Textarea
+              id="token-description"
+              placeholder="Enter token description"
+              className="mt-1 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
+              value={tokenDescription}
+              onChange={(e) => setTokenDescription(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="website">Website</Label>
+            <Input
+              id="website"
+              placeholder="Optional"
+              className="mt-1 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
+              value={website}
+              onChange={(e) => setWebsite(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="telegram">Telegram</Label>
+            <Input
+              id="telegram"
+              placeholder="Optional"
+              className="mt-1 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
+              value={telegram}
+              onChange={(e) => setTelegram(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="twitter">Twitter</Label>
+            <Input
+              id="twitter"
+              placeholder="Optional"
+              className="mt-1 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
+              value={twitter}
+              onChange={(e) => setTwitter(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="discord">Discord</Label>
+            <Input
+              id="discord"
+              placeholder="Optional"
+              className="mt-1 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
+              value={discord}
+              onChange={(e) => setDiscord(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="initial-mint">Initial Mint</Label>
+            <div className="relative mt-1">
+              <Input
+                id="initial-mint-amount"
+                placeholder="Optional. Enter the amount"
+                className="pr-16 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
+                value={initialMintAmount}
+                onChange={(e) => setInitialMintAmount(e.target.value)}
+              />
+            </div>
+            <div className="relative mt-1">
+              <Input
+                id="initial-mint-address"
+                placeholder="Optional. Enter the address (B62...)"
+                className="pr-16 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
+                value={initialMintAddress}
+                onChange={(e) => setInitialMintAddress(e.target.value)}
+              />
+            </div>
+            <p className="text-sm text-[#F9ECDE] mt-1">
+              Mint your token to this address immediately after issue
+            </p>
+          </div>
+
+          <Button
+            className="w-full bg-[#F15B22] hover:bg-[#d14d1d] text-white"
+            onClick={handleIssueToken}
+            disabled={issuing}
+          >
+            Issue Token
+          </Button>
         </div>
-        <div>
-          <p className="text-sm text-[#F9ECDE] mt-1">
-            Arweave link: {arweaveLink}
-          </p>
-        </div>
-        <div>
-          <p className="text-sm text-[#F9ECDE] mt-1">
-            Deploy hash: {deployStatus}
-          </p>
-        </div>
-        <div>
-          <p className="text-sm text-[#F9ECDE] mt-1">
-            Token address: {address}
-          </p>
-        </div>
-        <div>
-          <p className="text-sm text-[#F9ECDE] mt-1">
-            Admin contract address: {admin}
-          </p>
-        </div>
-        <div>
-          <p className="text-sm text-[#F9ECDE] mt-1">Mint hash: {mintStatus}</p>
-        </div>
+      )}
+      <div ref={bottomRef}>
+        {(timelineItems.length > 0 || waitingItem) && (
+          <Timeline
+            title="Token Issue Progress"
+            items={timelineItems}
+            lastItem={waitingItem}
+          ></Timeline>
+        )}
       </div>
     </div>
   );

@@ -3,8 +3,6 @@
 import { zkCloudWorkerClient } from "zkcloudworker";
 const DEPLOYER = process.env.DEPLOYER;
 const DEPLOYER_SK = process.env.DEPLOYER_SK;
-const ZKCW_ENDPOINT = process.env.ZKCW_ENDPOINT;
-const ZKCW_AUTH = process.env.ZKCW_AUTH;
 const ZKCW_JWT = process.env.ZKCW_JWT;
 const NEXT_PUBLIC_CHAIN = process.env.NEXT_PUBLIC_CHAIN;
 
