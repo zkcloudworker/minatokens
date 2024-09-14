@@ -1,6 +1,7 @@
 "use server";
 import Arweave from "arweave";
 const ARWEAVE_KEY_STRING = process.env.ARWEAVE_KEY_STRING;
+const ARWEAVE_TEST = process.env.ARWEAVE_TEST;
 
 export async function arweaveTxStatus(hash: string): Promise<{
   success: boolean;
@@ -14,6 +15,21 @@ export async function arweaveTxStatus(hash: string): Promise<{
       success: false,
       error: "ARWEAVE_KEY_STRING is undefined",
       url: ArweaveService.hashToUrl(hash),
+    };
+  }
+  if (ARWEAVE_TEST === "true") {
+    return {
+      success: true,
+      data: {
+        status: 200,
+        confirmed: {
+          block_height: 1505770,
+          block_indep_hash:
+            "kJv_3rXKAwia0AEffu6HwkFii2u5-hyiFgJF1Bu6hq2ehYWMlF3bTabMCrjqL3yE",
+          number_of_confirmations: 1,
+        },
+      },
+      url: "https://arweave.net/WYqJVOIBqnVmOzAdlHJ5NE7K6WJnzDWARlxA4iSt11I",
     };
   }
   const arweave = new ArweaveService(ARWEAVE_KEY_STRING);
@@ -31,7 +47,9 @@ export async function pinStringToArweave(
     return undefined;
   }
 
-  const arweave = new ArweaveService(ARWEAVE_KEY_STRING);
+  const arweave = new ArweaveService(
+    ARWEAVE_TEST === "true" ? "" : ARWEAVE_KEY_STRING
+  );
 
   const hash = await arweave.pinString({
     data,
@@ -79,7 +97,7 @@ class ArweaveService {
 
   constructor(key: string | object) {
     if (typeof key === "string") {
-      if (key === "") key = { test: true };
+      if (key === "") this.key = { test: true };
       else this.key = JSON.parse(key);
     } else {
       this.key = key;
@@ -106,7 +124,7 @@ class ArweaveService {
         return undefined;
       }
       if (this.key?.test === true)
-        return "CtQFMSLwvvWDkl5b2epJAroxXVbr1ISlAl1quCaxrOc";
+        return "DE6IatWeT6V6uhmKIVAcGU4mrGVInNkhPM9-A1X_wA4";
       const address = await this.arweave.wallets.jwkToAddress(this.key);
       console.log("address", address);
       const balance = await this.arweave.wallets.getBalance(address);
@@ -156,7 +174,7 @@ class ArweaveService {
     try {
       if (this.key === undefined) return undefined;
       if (this.key?.test === true)
-        return "CtQFMSLwvvWDkl5b2epJAroxXVbr1ISlAl1quCaxrOc";
+        return "DE6IatWeT6V6uhmKIVAcGU4mrGVInNkhPM9-A1X_wA4";
       const address = await this.arweave.wallets.jwkToAddress(this.key);
       const balance = await this.arweave.wallets.getBalance(address);
       if (parseInt(balance) === 0) return undefined;

@@ -1,7 +1,7 @@
 "use client";
 
-import { PrivateKey } from "o1js";
 import { deploy } from "./zkcloudworker";
+import type { PrivateKey, PublicKey } from "o1js";
 
 export async function deployToken(params: {
   symbol: string;
@@ -9,9 +9,18 @@ export async function deployToken(params: {
 }): Promise<{ token: string; adminContract: string; hash: string }> {
   const { symbol, uri } = params;
   console.log(`Deploying contract...`);
+  console.time("loaded o1js");
+  const { PrivateKey } = await import("o1js");
+  console.timeEnd("loaded o1js");
   console.time(`Deployed contract`);
-  const token = PrivateKey.randomKeypair();
-  const adminContract = PrivateKey.randomKeypair();
+  const token: {
+    privateKey: PrivateKey;
+    publicKey: PublicKey;
+  } = PrivateKey.randomKeypair();
+  const adminContract: {
+    privateKey: PrivateKey;
+    publicKey: PublicKey;
+  } = PrivateKey.randomKeypair();
   console.log("token:", token.publicKey.toBase58());
   console.log("adminContract:", adminContract.publicKey.toBase58());
   console.log("symbol:", symbol);
