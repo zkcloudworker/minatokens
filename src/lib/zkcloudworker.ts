@@ -20,12 +20,12 @@ function getAPI(): zkCloudWorkerClient {
 }
 
 export async function deploy(params: {
-  contractPrivateKey: string;
+  tokenPrivateKey: string;
   adminContractPrivateKey: string;
   symbol: string;
   uri: string;
-}): Promise<string> {
-  const { contractPrivateKey, adminContractPrivateKey, symbol, uri } = params;
+}): Promise<string | undefined> {
+  const { tokenPrivateKey, adminContractPrivateKey, symbol, uri } = params;
   console.log(`Deploying contract...`);
   console.time(`Deployed contract`);
   if (DEPLOYER_SK === undefined) throw new Error("DEPLOYER_SK is undefined");
@@ -47,7 +47,7 @@ export async function deploy(params: {
     transactions: [],
     task: "deploy",
     args: JSON.stringify({
-      contractPrivateKey,
+      contractPrivateKey: tokenPrivateKey,
       adminPrivateString,
       adminContractPrivateKey,
       symbol,
@@ -57,12 +57,19 @@ export async function deploy(params: {
   });
   console.log("answer:", answer);
   const jobId = answer.jobId;
-  if (jobId === undefined) throw new Error("Job ID is undefined");
+  if (jobId === undefined) console.error("Job ID is undefined");
+  return jobId;
+}
+
+export async function waitForJobResult(
+  jobId: string
+): Promise<string | undefined> {
+  const api = getAPI();
   const deployResult = await api.waitForJobResult({
     jobId,
     printLogs: true,
   });
-  console.log("Token deployment result:", deployResult.result.result);
+  console.log("Token deployment result:", deployResult?.result?.result);
   console.timeEnd(`Deployed contract`);
   return deployResult?.result?.result ?? "error";
 }
