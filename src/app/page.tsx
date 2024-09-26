@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/timeline";
 import { useDropzone } from "react-dropzone";
 import { getTxStatus } from "@/lib/txstatus";
+import { connectWallet } from "@/lib/wallet";
 
 const DEBUG = process.env.NEXT_PUBLIC_DEBUG === "true";
 
@@ -343,6 +344,23 @@ export default function LaunchToken() {
         "https://github.com/MinaFoundation/mina-fungible-token/blob/main/FungibleTokenAdmin.ts",
       ],
     };
+
+    const { address, network, error, success } = await connectWallet({});
+    console.log("Connected wallet", { address, network, error, success });
+    if (!success) {
+      logItem({
+        id: "metadata",
+        status: "error",
+        title: "Failed to connect to wallet",
+        description: "Connect to wallet to continue",
+        date: new Date(),
+      });
+      setWaitingItem(undefined);
+      setIssuing(false);
+      return;
+    }
+    return;
+
     const metadataHash = await pinStringToArweave(
       JSON.stringify(json, null, 2)
     );
