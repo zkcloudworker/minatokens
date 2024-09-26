@@ -359,7 +359,6 @@ export default function LaunchToken() {
       setIssuing(false);
       return;
     }
-    return;
 
     const metadataHash = await pinStringToArweave(
       JSON.stringify(json, null, 2)
