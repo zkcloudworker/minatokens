@@ -146,3 +146,44 @@ export async function connectWallet(
     success: true,
   };
 }
+
+export async function getWalletInfo(): Promise<{
+  address: string | undefined;
+  network: string | undefined;
+}> {
+  let address: string | undefined;
+  let network: string | undefined;
+
+  try {
+    const { mina } = window as any;
+    if (!mina) {
+      return {
+        address: undefined,
+        network: undefined,
+      };
+    }
+
+    try {
+      const account = await mina.getAccounts();
+
+      if (account.length > 0) {
+        address = account[0];
+      }
+    } catch (error: any) {
+      console.error("getWalletInfo catch on getAccounts", error);
+    }
+
+    try {
+      network = (await (window as any).mina?.requestNetwork())?.networkID;
+    } catch (error: any) {
+      console.error("getWalletInfo requestNetwork catch", error);
+    }
+  } catch (error: any) {
+    console.error("getWalletInfo catch", error);
+  }
+
+  return {
+    address,
+    network,
+  };
+}
