@@ -10,6 +10,7 @@ const nextConfig = {
     return [
       {
         source: "/(.*)",
+
         headers: [
           {
             key: "Cross-Origin-Opener-Policy",

@@ -11,7 +11,7 @@ import {
   pinImageToArweave,
   pinStringToArweave,
 } from "@/lib/arweave";
-import { deployTokenParams } from "@/lib/deploy";
+import { deployTokenParams } from "@/lib/keys";
 import { deploy, waitForJobResult } from "@/lib/zkcloudworker";
 import {
   Timeline,
@@ -20,7 +20,8 @@ import {
 } from "@/components/ui/timeline";
 import { useDropzone } from "react-dropzone";
 import { getTxStatus } from "@/lib/txstatus";
-import { connectWallet } from "@/lib/wallet";
+import { connectWallet, getWalletInfo } from "@/lib/wallet";
+import { getSystemInfo } from "@/lib/system-info";
 
 const DEBUG = process.env.NEXT_PUBLIC_DEBUG === "true";
 
@@ -306,6 +307,11 @@ export default function LaunchToken() {
   }
 
   async function handleIssueToken() {
+    const walletInfo = await getWalletInfo();
+    if (DEBUG) console.log("Wallet Info:", walletInfo);
+    const systemInfo = await getSystemInfo();
+    if (DEBUG) console.log("System Info:", systemInfo);
+    if (DEBUG) console.log("Navigator:", navigator);
     setIssuing(true);
     setTimeLineItems([]);
     logWaitingItem({
@@ -347,7 +353,7 @@ export default function LaunchToken() {
 
     const { address, network, error, success } = await connectWallet({});
     console.log("Connected wallet", { address, network, error, success });
-    if (!success) {
+    if (!success || !address) {
       logItem({
         id: "metadata",
         status: "error",
@@ -393,9 +399,49 @@ export default function LaunchToken() {
       setIssuing(false);
       return;
     }
-    const { tokenPrivateKey, adminContractPrivateKey } =
-      await deployParamsPromise;
+    const {
+      tokenPrivateKey,
+      adminContractPrivateKey,
+      tokenPublicKey,
+      adminContractPublicKey,
+    } = await deployParamsPromise;
     if (DEBUG) console.log("Deploy Params received");
+
+    // Save the result to a JSON file
+    const deployParams = {
+      tokenPrivateKey,
+      adminContractPrivateKey,
+      tokenPublicKey,
+      adminContractPublicKey,
+      adminPublicKey: address,
+    };
+    const deployParamsJson = JSON.stringify(deployParams, null, 2);
+    const blob = new Blob([deployParamsJson], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const name = `${tokenSymbol}-${tokenPublicKey}.json`;
+    a.download = name;
+    a.click();
+    logItem({
+      id: "saveDeployParams",
+      status: "success",
+      title: "Token deploy parameters saved to a JSON file",
+      description: (
+        <>
+          <a
+            href={url}
+            className="text-blue-500 hover:underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {name}
+          </a>
+          has been saved to your device.
+        </>
+      ),
+      date: new Date(),
+    });
     const deployJobId = await deploy({
       tokenPrivateKey,
       adminContractPrivateKey,
