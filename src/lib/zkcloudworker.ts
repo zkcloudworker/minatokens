@@ -1,10 +1,10 @@
 "use server";
 
-import { zkCloudWorkerClient } from "zkcloudworker";
-const DEPLOYER = process.env.DEPLOYER;
-const DEPLOYER_SK = process.env.DEPLOYER_SK;
+import { zkCloudWorkerClient, FungibleTokenDeployParams } from "zkcloudworker";
+
 const ZKCW_JWT = process.env.ZKCW_JWT;
 const NEXT_PUBLIC_CHAIN = process.env.NEXT_PUBLIC_CHAIN;
+const DEBUG = process.env.DEBUG === "true";
 
 function getAPI(): zkCloudWorkerClient {
   if (ZKCW_JWT === undefined) throw new Error("ZKCW_JWT is undefined");
@@ -19,41 +19,23 @@ function getAPI(): zkCloudWorkerClient {
   return api;
 }
 
-export async function deploy(params: {
-  tokenPrivateKey: string;
-  adminContractPrivateKey: string;
-  symbol: string;
-  uri: string;
-}): Promise<string | undefined> {
-  const { tokenPrivateKey, adminContractPrivateKey, symbol, uri } = params;
+export async function sendDeployTransaction(
+  params: FungibleTokenDeployParams
+): Promise<string | undefined> {
+  const { symbol } = params;
   console.log(`Deploying contract...`);
   console.time(`Deployed contract`);
-  if (DEPLOYER_SK === undefined) throw new Error("DEPLOYER_SK is undefined");
-  const adminPrivateString = DEPLOYER_SK;
   const api = getAPI();
 
-  /*
-          private async deployTx(args: {
-              contractPrivateKey: string;
-              adminPrivateString: string;
-              adminContractPrivateKey: string;
-              symbol: string;
-              uri: string;
-            }): Promise<string> {
-      */
+  const transaction = JSON.stringify(params, null, 2);
+
   const answer = await api.execute({
     developer: "DFST",
     repo: "token-launchpad",
-    transactions: [],
+    transactions: [transaction],
     task: "deploy",
-    args: JSON.stringify({
-      contractPrivateKey: tokenPrivateKey,
-      adminPrivateString,
-      adminContractPrivateKey,
-      symbol,
-      uri,
-    }),
-    metadata: `deploy token`,
+    args: "",
+    metadata: `deploy token ${symbol}`,
   });
   console.log("answer:", answer);
   const jobId = answer.jobId;

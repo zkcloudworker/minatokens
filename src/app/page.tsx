@@ -12,7 +12,8 @@ import {
   pinStringToArweave,
 } from "@/lib/arweave";
 import { deployTokenParams } from "@/lib/keys";
-import { deploy, waitForJobResult } from "@/lib/zkcloudworker";
+import { deployToken } from "@/lib/deploy";
+import { waitForJobResult } from "@/lib/zkcloudworker";
 import {
   Timeline,
   TimelineItem,
@@ -22,7 +23,7 @@ import { useDropzone } from "react-dropzone";
 import { getTxStatus } from "@/lib/txstatus";
 import { connectWallet, getWalletInfo } from "@/lib/wallet";
 import { getSystemInfo } from "@/lib/system-info";
-
+import { loadLibraries } from "@/lib/libraries";
 const DEBUG = process.env.NEXT_PUBLIC_DEBUG === "true";
 
 export default function LaunchToken() {
@@ -44,7 +45,21 @@ export default function LaunchToken() {
     undefined
   );
   const [isError, setIsError] = useState<boolean>(false);
+  const [libraries, setLibraries] = useState<
+    | Promise<{
+        o1js: typeof import("o1js");
+        zkcloudworker: typeof import("zkcloudworker");
+      }>
+    | undefined
+  >(undefined);
+  const [hot, setHot] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  function warm() {
+    if (hot) return;
+    setHot(true);
+    if (libraries === undefined) setLibraries(loadLibraries());
+  }
 
   const onDrop = (acceptedFiles: File[]) => {
     if (DEBUG) console.log("acceptedFiles", acceptedFiles);
@@ -320,6 +335,7 @@ export default function LaunchToken() {
     });
     setIssued(false);
     setIsError(false);
+    warm();
 
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     console.log("Token Name:", tokenName);
@@ -442,11 +458,15 @@ export default function LaunchToken() {
       ),
       date: new Date(),
     });
-    const deployJobId = await deploy({
+    const deployJobId = await deployToken({
       tokenPrivateKey,
       adminContractPrivateKey,
+      adminPublicKey: address,
       symbol: tokenSymbol,
       uri,
+      libraries: libraries ?? loadLibraries(),
+      logItem,
+      updateLogItem,
     });
     if (DEBUG) console.log("Deploy Job ID:", deployJobId);
     if (!deployJobId || isError) {
@@ -589,7 +609,10 @@ export default function LaunchToken() {
                   placeholder="Enter token name"
                   className="mt-1 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
                   value={tokenName}
-                  onChange={(e) => setTokenName(e.target.value)}
+                  onChange={(e) => {
+                    setTokenName(e.target.value);
+                    warm();
+                  }}
                 />
               </div>
 
@@ -602,7 +625,10 @@ export default function LaunchToken() {
                   placeholder="Enter token symbol"
                   className="mt-1 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
                   value={tokenSymbol}
-                  onChange={(e) => setTokenSymbol(e.target.value)}
+                  onChange={(e) => {
+                    setTokenSymbol(e.target.value);
+                    warm();
+                  }}
                 />
               </div>
 
