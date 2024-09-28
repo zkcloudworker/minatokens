@@ -1,5 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "url";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -35,6 +36,7 @@ const nextConfig = {
     } else {
       config.externals.push("o1js"); // https://nextjs.org/docs/app/api-reference/next-config-js/serverExternalPackages
     }
+
     return config;
   },
 
