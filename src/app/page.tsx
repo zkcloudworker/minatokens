@@ -458,7 +458,7 @@ export default function LaunchToken() {
       ),
       date: new Date(),
     });
-    const deployJobId = await deployToken({
+    const deployResult = await deployToken({
       tokenPrivateKey,
       adminContractPrivateKey,
       adminPublicKey: address,
@@ -468,8 +468,12 @@ export default function LaunchToken() {
       logItem,
       updateLogItem,
     });
-    if (DEBUG) console.log("Deploy Job ID:", deployJobId);
-    if (!deployJobId || isError) {
+    if (DEBUG) console.log("Deploy result:", deployResult);
+    if (
+      deployResult.success === false ||
+      deployResult.jobId === undefined ||
+      isError
+    ) {
       logItem({
         id: "deploy",
         status: "error",
@@ -481,6 +485,7 @@ export default function LaunchToken() {
       setIssuing(false);
       return;
     }
+    const deployJobId = deployResult.jobId;
     const waitForProveJobPromise = waitForProveJob({
       jobId: deployJobId,
       id: "deployProve",
