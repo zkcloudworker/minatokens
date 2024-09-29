@@ -1,3 +1,5 @@
+"use client";
+
 export async function getSystemInfo(): Promise<{
   memoryAvailable: number;
   cpuType: string;

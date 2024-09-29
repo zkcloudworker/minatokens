@@ -87,3 +87,9 @@ export async function waitForJobResult(
   console.timeEnd(`Deployed contract`);
   return deployResult?.result?.result ?? "error";
 }
+
+export async function getResult(jobId: string): Promise<string | undefined> {
+  const api = getAPI();
+  const result = await api.jobResult({ jobId });
+  return result?.result?.result;
+}

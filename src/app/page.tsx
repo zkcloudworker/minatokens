@@ -21,7 +21,7 @@ import {
 import { deployTokenParams } from "@/lib/keys";
 import { deployToken } from "@/lib/deploy";
 import { mintToken } from "@/lib/mint";
-import { waitForJobResult } from "@/lib/zkcloudworker";
+import { getResult } from "@/lib/zkcloudworker";
 import {
   Timeline,
   TimelineItem,
@@ -338,7 +338,12 @@ export default function LaunchToken() {
       ),
       date: new Date(),
     });
-    let result = await waitForJobResult(jobId);
+    await sleep(10000);
+    let result = await getResult(jobId);
+    while (!result) {
+      await sleep(10000);
+      result = await getResult(jobId);
+    }
 
     if (!result || result.toLowerCase().startsWith("error") || isError) {
       updateLogItem(id, {
@@ -415,7 +420,11 @@ export default function LaunchToken() {
       date: new Date(),
     });
     await sleep(10000);
-    let result = await waitForJobResult(jobId);
+    let result = await getResult(jobId);
+    while (!result) {
+      await sleep(10000);
+      result = await getResult(jobId);
+    }
 
     if (!result || result.toLowerCase().startsWith("error") || isError) {
       updateLogItem(id, {
