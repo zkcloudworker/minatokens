@@ -3,6 +3,9 @@ import Arweave from "arweave";
 const ARWEAVE_KEY_STRING = process.env.ARWEAVE_KEY_STRING;
 const ARWEAVE_TEST = process.env.ARWEAVE_TEST;
 
+export async function arweaveHashToUrl(hash: string): Promise<string> {
+  return ArweaveService.hashToUrl(hash);
+}
 export async function arweaveTxStatus(hash: string): Promise<{
   success: boolean;
   data?: any;

@@ -1,5 +1,5 @@
 "use server";
-import { getNonce, fetchMinaAccount } from "zkcloudworker";
+import { getNonce, fetchMinaAccount, initBlockchain } from "zkcloudworker";
 import { Mina, PublicKey } from "o1js";
 const chain = process.env.NEXT_PUBLIC_CHAIN;
 const BLOCKBERRY_API = process.env.BLOCKBERRY_API;
@@ -15,6 +15,7 @@ export async function getAccountNonce(account: string): Promise<number> {
     blockBerryApiKey: BLOCKBERRY_API,
     chain,
   });
+  await initBlockchain(chain);
   const publicKey = PublicKey.fromBase58(account);
   await fetchMinaAccount({ publicKey });
   const senderNonce = Number(Mina.getAccount(publicKey).nonce.toBigint());
