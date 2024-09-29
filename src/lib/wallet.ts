@@ -1,3 +1,5 @@
+"use client";
+
 const DEBUG = process.env.NEXT_PUBLIC_DEBUG === "true";
 const chain = process.env.NEXT_PUBLIC_CHAIN_ID;
 

@@ -1,3 +1,5 @@
+"use client";
+
 export async function loadLibraries(): Promise<{
   o1js: typeof import("o1js");
   zkcloudworker: typeof import("zkcloudworker");
