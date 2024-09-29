@@ -194,7 +194,7 @@ export function Timeline(params: TimelineProps) {
 
   return (
     <div className="container mx-auto p-4 max-w-2xl">
-      <h1 className="text-2xl font-bold mb-4">{title}</h1>
+      <h1 className="text-xl font-bold mb-4">{title}</h1>
       <div className="space-y-3">
         {allItems.map((item, index) => (
           <div
@@ -214,18 +214,12 @@ export function Timeline(params: TimelineProps) {
             </div>
             <div className="ml-3 flex-grow">
               <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold">{item.title}</h2>
+                <h2 className="text-xs font-semibold">{item.title}</h2>
                 <span className="text-xs text-gray-500">
                   {formatTime(item.date)}
                 </span>
               </div>
               <p className="text-xs text-gray-600 mt-0.5">{item.description}</p>
-              {index < allItems.length - 1 && (
-                <div
-                  className="absolute left-3 mt-2 w-px h-4 bg-gray-300"
-                  aria-hidden="true"
-                ></div>
-              )}
             </div>
           </div>
         ))}

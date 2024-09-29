@@ -2,6 +2,18 @@
 
 import { zkCloudWorkerClient, FungibleTokenDeployParams } from "zkcloudworker";
 
+export interface FungibleTokenMintParams {
+  tokenPublicKey: string;
+  adminContractPublicKey: string;
+  adminPublicKey: string;
+  chain: string;
+  symbol: string;
+  serializedTransaction: string;
+  signedData: string;
+  to: string;
+  amount: number;
+}
+
 const ZKCW_JWT = process.env.ZKCW_JWT;
 const NEXT_PUBLIC_CHAIN = process.env.NEXT_PUBLIC_CHAIN;
 const DEBUG = process.env.DEBUG === "true";
@@ -24,7 +36,6 @@ export async function sendDeployTransaction(
 ): Promise<string | undefined> {
   const { symbol } = params;
   console.log(`Deploying contract...`);
-  console.time(`Deployed contract`);
   const api = getAPI();
 
   const transaction = JSON.stringify(params, null, 2);
@@ -34,8 +45,31 @@ export async function sendDeployTransaction(
     repo: "token-launchpad",
     transactions: [transaction],
     task: "deploy",
-    args: "",
+    args: JSON.stringify({ sender: params.adminPublicKey }),
     metadata: `deploy token ${symbol}`,
+  });
+  console.log("answer:", answer);
+  const jobId = answer.jobId;
+  if (jobId === undefined) console.error("Job ID is undefined");
+  return jobId;
+}
+
+export async function sendMintTransaction(
+  params: FungibleTokenMintParams
+): Promise<string | undefined> {
+  const { symbol } = params;
+  console.log(`Minting tokens...`);
+  const api = getAPI();
+
+  const transaction = JSON.stringify(params, null, 2);
+
+  const answer = await api.execute({
+    developer: "DFST",
+    repo: "token-launchpad",
+    transactions: [transaction],
+    task: "mint",
+    args: JSON.stringify({ sender: params.adminPublicKey }),
+    metadata: `mint token ${symbol}`,
   });
   console.log("answer:", answer);
   const jobId = answer.jobId;

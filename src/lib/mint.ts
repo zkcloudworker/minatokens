@@ -1,10 +1,8 @@
 "use client";
 
-import { sendDeployTransaction } from "./zkcloudworker";
-import { getAccountNonce } from "./nonce";
+import { sendMintTransaction } from "./zkcloudworker";
 import { TimelineItem } from "../components/ui/timeline";
 import React from "react";
-import { verificationKeys } from "./vk";
 
 const DEBUG = process.env.NEXT_PUBLIC_DEBUG === "true";
 const chain = process.env.NEXT_PUBLIC_CHAIN;
@@ -13,18 +11,21 @@ const AURO_TEST = process.env.NEXT_PUBLIC_AURO_TEST === "true";
 const MINT_FEE = 1e8;
 const ISSUE_FEE = 1e9;
 
-export async function deployToken(params: {
-  tokenPrivateKey: string;
-  adminContractPrivateKey: string;
+export async function mintToken(params: {
+  tokenPublicKey: string;
+  adminContractPublicKey: string;
   adminPublicKey: string;
+  to: string;
+  amount: string;
   symbol: string;
-  uri: string;
   libraries: Promise<{
     o1js: typeof import("o1js");
     zkcloudworker: typeof import("zkcloudworker");
   }>;
   logItem: (item: TimelineItem) => void;
   updateLogItem: (id: string, update: Partial<TimelineItem>) => void;
+  nonce: number;
+  id: string;
 }): Promise<{
   success: boolean;
   error?: string;
@@ -39,13 +40,14 @@ export async function deployToken(params: {
   if (DEBUG) console.log("deploy token", params);
   try {
     const {
-      tokenPrivateKey,
+      tokenPublicKey,
       adminPublicKey,
       symbol,
-      uri,
       libraries,
       logItem,
       updateLogItem,
+      nonce,
+      id,
     } = params;
 
     const mina = (window as any).mina;
@@ -108,21 +110,6 @@ export async function deployToken(params: {
       },
     } = await libraries;
 
-    let adminPrivateKey = PrivateKey.empty();
-    if (AURO_TEST) {
-      if (process.env.NEXT_PUBLIC_ADMIN_SK === undefined) {
-        throw new Error("NEXT_PUBLIC_ADMIN_SK is undefined");
-      }
-      adminPrivateKey = PrivateKey.fromBase58(process.env.NEXT_PUBLIC_ADMIN_SK);
-      const adminPublicKeyTmp = adminPrivateKey.toPublicKey();
-      if (adminPublicKeyTmp.toBase58() !== process.env.NEXT_PUBLIC_ADMIN_PK) {
-        throw new Error("NEXT_PUBLIC_ADMIN_PK is invalid");
-      }
-    }
-    const sender = AURO_TEST
-      ? adminPrivateKey.toPublicKey()
-      : PublicKey.fromBase58(adminPublicKey);
-
     updateLogItem("o1js-loading", {
       status: "success",
       title: "Loaded o1js library",
@@ -145,12 +132,32 @@ export async function deployToken(params: {
     });
 
     logItem({
-      id: "transaction",
+      id: "mint-transaction",
       status: "waiting",
       title: "Preparing transaction",
-      description: "Preparing the transaction for deployment...",
+      description: "Preparing the transaction for minting tokens...",
       date: new Date(),
     });
+
+    const to = PublicKey.fromBase58(params.to);
+    const amount = UInt64.from(
+      Number(parseInt((parseFloat(params.amount) * 1_000_000_000).toFixed(0)))
+    );
+
+    let adminPrivateKey = PrivateKey.empty();
+    if (AURO_TEST) {
+      if (process.env.NEXT_PUBLIC_ADMIN_SK === undefined) {
+        throw new Error("NEXT_PUBLIC_ADMIN_SK is undefined");
+      }
+      adminPrivateKey = PrivateKey.fromBase58(process.env.NEXT_PUBLIC_ADMIN_SK);
+      const adminPublicKeyTmp = adminPrivateKey.toPublicKey();
+      if (adminPublicKeyTmp.toBase58() !== process.env.NEXT_PUBLIC_ADMIN_PK) {
+        throw new Error("NEXT_PUBLIC_ADMIN_PK is invalid");
+      }
+    }
+    const sender = AURO_TEST
+      ? adminPrivateKey.toPublicKey()
+      : PublicKey.fromBase58(adminPublicKey);
 
     if (DEBUG) console.log("initializing blockchain", chain);
     const net = await initBlockchain(chain);
@@ -162,24 +169,43 @@ export async function deployToken(params: {
 
     const fee = Number((await getFee()).toBigInt());
 
-    const contractPrivateKey = PrivateKey.fromBase58(tokenPrivateKey);
-    const contractAddress = contractPrivateKey.toPublicKey();
+    const contractAddress = PublicKey.fromBase58(tokenPublicKey);
     if (DEBUG) console.log("Contract", contractAddress.toBase58());
-    const adminContractPrivateKey = PrivateKey.fromBase58(
-      params.adminContractPrivateKey
+    const adminContractPublicKey = PublicKey.fromBase58(
+      params.adminContractPublicKey
     );
-    const adminContractPublicKey = adminContractPrivateKey.toPublicKey();
     if (DEBUG) console.log("Admin Contract", adminContractPublicKey.toBase58());
     const wallet = PublicKey.fromBase58(WALLET);
     const zkToken = new FungibleToken(contractAddress);
-    const zkAdmin = new FungibleTokenAdmin(adminContractPublicKey);
+    const tokenId = zkToken.deriveTokenId();
 
     if (DEBUG) console.log(`Sending tx...`);
     console.time("prepared tx");
-    const memo = `deploy token ${symbol}`.substring(0, 30);
+    const memo =
+      `mint ${Number(amount.toBigInt()) / 1_000_000_000} ${symbol}`.length > 30
+        ? `mint ${symbol}`.substring(0, 30)
+        : `mint ${Number(amount.toBigInt()) / 1_000_000_000} ${symbol}`;
 
     await fetchMinaAccount({
       publicKey: sender,
+      force: true,
+    });
+    await fetchMinaAccount({
+      publicKey: contractAddress,
+      force: true,
+    });
+    await fetchMinaAccount({
+      publicKey: adminContractPublicKey,
+      force: true,
+    });
+    await fetchMinaAccount({
+      publicKey: contractAddress,
+      tokenId,
+      force: true,
+    });
+    await fetchMinaAccount({
+      publicKey: to,
+      tokenId,
       force: true,
     });
     await fetchMinaAccount({
@@ -203,7 +229,10 @@ export async function deployToken(params: {
         error: "Sender does not have account",
       };
     }
-    const requiredBalance = 3 + (ISSUE_FEE + fee) / 1_000_000_000;
+    const isNewAccount = Mina.hasAccount(to, tokenId);
+    const requiredBalance = isNewAccount
+      ? 1
+      : 0 + (MINT_FEE + fee) / 1_000_000_000;
     if (requiredBalance > balance) {
       logItem({
         id: "insufficient-balance",
@@ -219,57 +248,20 @@ export async function deployToken(params: {
     }
 
     console.log("Sender balance:", await accountBalanceMina(sender));
-    const nonce = await getAccountNonce(sender.toBase58());
-
-    const adminContractVerificationKey = verificationKeys[chain]?.admin;
-    const tokenContractVerificationKey = verificationKeys[chain]?.token;
-    if (
-      adminContractVerificationKey === undefined ||
-      tokenContractVerificationKey === undefined
-    ) {
-      throw new Error("Verification keys are undefined");
-    }
-
-    FungibleTokenAdmin._verificationKey = {
-      hash: Field(adminContractVerificationKey.hash),
-      data: adminContractVerificationKey.data,
-    };
-    FungibleToken._verificationKey = {
-      hash: Field(tokenContractVerificationKey.hash),
-      data: tokenContractVerificationKey.data,
-    };
 
     const tx = await Mina.transaction(
       { sender, fee, memo, nonce },
       async () => {
-        AccountUpdate.fundNewAccount(sender, 3);
+        if (isNewAccount) AccountUpdate.fundNewAccount(sender, 1);
         const provingFee = AccountUpdate.createSigned(sender);
         provingFee.send({
           to: PublicKey.fromBase58(WALLET),
-          amount: UInt64.from(ISSUE_FEE),
+          amount: UInt64.from(MINT_FEE),
         });
-        await zkAdmin.deploy({ adminPublicKey: sender });
-        zkAdmin.account.zkappUri.set(uri);
-        await zkToken.deploy({
-          symbol: symbol,
-          src: uri,
-        });
-        await zkToken.initialize(
-          adminContractPublicKey,
-          UInt8.from(9), // TODO: set decimals
-          // We can set `startPaused` to `Bool(false)` here, because we are doing an atomic deployment
-          // If you are not deploying the admin and token contracts in the same transaction,
-          // it is safer to start the tokens paused, and resume them only after verifying that
-          // the admin contract has been deployed
-          Bool(false)
-        );
+        await zkToken.mint(to, amount);
       }
     );
-    tx.sign(
-      AURO_TEST
-        ? [contractPrivateKey, adminContractPrivateKey, adminPrivateKey]
-        : [contractPrivateKey, adminContractPrivateKey]
-    );
+    if (AURO_TEST) tx.sign([adminPrivateKey]);
 
     const serializedTransaction = serializeTransaction(tx);
     const transaction = tx.toJSON();
@@ -328,7 +320,7 @@ export async function deployToken(params: {
       description: "Starting cloud proving job...",
       date: new Date(),
     });
-    const jobId = await sendDeployTransaction({
+    const jobId = await sendMintTransaction({
       serializedTransaction,
       signedData,
       adminContractPublicKey: adminContractPublicKey.toBase58(),
@@ -336,7 +328,6 @@ export async function deployToken(params: {
       adminPublicKey: sender.toBase58(),
       chain,
       symbol,
-      uri,
     });
     console.timeEnd("sent transaction");
     if (DEBUG) console.log("Sent transaction, jobId", jobId);
