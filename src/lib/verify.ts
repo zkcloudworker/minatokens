@@ -3,6 +3,8 @@ import { fetchMinaAccount, initBlockchain, FungibleToken } from "zkcloudworker";
 import { Mina, PublicKey } from "o1js";
 const chain = process.env.NEXT_PUBLIC_CHAIN;
 
+// TODO: index verified tokens
+
 export async function verifyFungibleTokenState(params: {
   tokenContractAddress: string;
   adminContractAddress: string;

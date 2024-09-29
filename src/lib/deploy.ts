@@ -29,7 +29,6 @@ export async function deployToken(params: {
   success: boolean;
   error?: string;
   jobId?: string;
-  json?: string;
 }> {
   if (chain === undefined) throw new Error("NEXT_PUBLIC_CHAIN is undefined");
   if (chain !== "devnet" && chain !== "mainnet")
@@ -37,17 +36,17 @@ export async function deployToken(params: {
   if (WALLET === undefined) throw new Error("NEXT_PUBLIC_WALLET is undefined");
   console.time("ready to sign");
   if (DEBUG) console.log("deploy token", params);
-  try {
-    const {
-      tokenPrivateKey,
-      adminPublicKey,
-      symbol,
-      uri,
-      libraries,
-      logItem,
-      updateLogItem,
-    } = params;
+  const {
+    tokenPrivateKey,
+    adminPublicKey,
+    symbol,
+    uri,
+    libraries,
+    logItem,
+    updateLogItem,
+  } = params;
 
+  try {
     const mina = (window as any).mina;
     if (mina === undefined || mina?.isAuro !== true) {
       console.error("No Auro Wallet found", mina);
@@ -337,6 +336,7 @@ export async function deployToken(params: {
       chain,
       symbol,
       uri,
+      sendTransaction: false,
     });
     console.timeEnd("sent transaction");
     if (DEBUG) console.log("Sent transaction, jobId", jobId);
@@ -361,6 +361,13 @@ export async function deployToken(params: {
     };
   } catch (error) {
     console.error("Error in deployToken", error);
+    logItem({
+      id: "error",
+      status: "error",
+      title: "Error while deploying token",
+      description: String(error) ?? "Error while deploying token",
+      date: new Date(),
+    });
     return {
       success: false,
       error: String(error) ?? "Error while deploying token",

@@ -2,7 +2,6 @@
 
 import { sendMintTransaction } from "./zkcloudworker";
 import { TimelineItem } from "../components/ui/timeline";
-import React from "react";
 
 const DEBUG = process.env.NEXT_PUBLIC_DEBUG === "true";
 const chain = process.env.NEXT_PUBLIC_CHAIN;
@@ -16,13 +15,12 @@ export async function mintToken(params: {
   adminContractPublicKey: string;
   adminPublicKey: string;
   to: string;
-  amount: string;
+  amount: number;
   symbol: string;
-  libraries: Promise<{
+  lib: {
     o1js: typeof import("o1js");
     zkcloudworker: typeof import("zkcloudworker");
-  }>;
-  logItem: (item: TimelineItem) => void;
+  };
   updateLogItem: (id: string, update: Partial<TimelineItem>) => void;
   nonce: number;
   id: string;
@@ -30,7 +28,6 @@ export async function mintToken(params: {
   success: boolean;
   error?: string;
   jobId?: string;
-  json?: string;
 }> {
   if (chain === undefined) throw new Error("NEXT_PUBLIC_CHAIN is undefined");
   if (chain !== "devnet" && chain !== "mainnet")
@@ -38,25 +35,21 @@ export async function mintToken(params: {
   if (WALLET === undefined) throw new Error("NEXT_PUBLIC_WALLET is undefined");
   console.time("ready to sign");
   if (DEBUG) console.log("deploy token", params);
+  const {
+    tokenPublicKey,
+    adminPublicKey,
+    symbol,
+    lib,
+    updateLogItem,
+    nonce,
+    id,
+  } = params;
   try {
-    const {
-      tokenPublicKey,
-      adminPublicKey,
-      symbol,
-      libraries,
-      logItem,
-      updateLogItem,
-      nonce,
-      id,
-    } = params;
-
     const mina = (window as any).mina;
     if (mina === undefined || mina?.isAuro !== true) {
       console.error("No Auro Wallet found", mina);
-      logItem({
-        id: "no-mina",
+      updateLogItem(id, {
         status: "error",
-        title: "No Auro Wallet found",
         description: "Please install Auro Wallet",
         date: new Date(),
       });
@@ -65,28 +58,6 @@ export async function mintToken(params: {
         error: "No Auro Wallet found",
       };
     }
-
-    logItem({
-      id: "o1js-loading",
-      status: "waiting",
-      title: "Loading o1js library",
-      description: React.createElement(
-        "span",
-        null,
-        "Loading ",
-        React.createElement(
-          "a",
-          {
-            href: "https://docs.minaprotocol.com/zkapps/o1js",
-            target: "_blank",
-            rel: "noopener noreferrer",
-          },
-          "o1js"
-        ),
-        " library..."
-      ),
-      date: new Date(),
-    });
 
     const {
       o1js: {
@@ -101,47 +72,17 @@ export async function mintToken(params: {
       },
       zkcloudworker: {
         FungibleToken,
-        FungibleTokenAdmin,
         serializeTransaction,
         initBlockchain,
         accountBalanceMina,
         fee: getFee,
         fetchMinaAccount,
       },
-    } = await libraries;
-
-    updateLogItem("o1js-loading", {
-      status: "success",
-      title: "Loaded o1js library",
-      description: React.createElement(
-        "span",
-        null,
-        "Loaded ",
-        React.createElement(
-          "a",
-          {
-            href: "https://docs.minaprotocol.com/zkapps/o1js",
-            target: "_blank",
-            rel: "noopener noreferrer",
-          },
-          "o1js"
-        ),
-        " library"
-      ),
-      date: new Date(),
-    });
-
-    logItem({
-      id: "mint-transaction",
-      status: "waiting",
-      title: "Preparing transaction",
-      description: "Preparing the transaction for minting tokens...",
-      date: new Date(),
-    });
+    } = lib;
 
     const to = PublicKey.fromBase58(params.to);
     const amount = UInt64.from(
-      Number(parseInt((parseFloat(params.amount) * 1_000_000_000).toFixed(0)))
+      Number(parseInt((params.amount * 1_000_000_000).toFixed(0)))
     );
 
     let adminPrivateKey = PrivateKey.empty();
@@ -166,9 +107,7 @@ export async function mintToken(params: {
     if (DEBUG) console.log("network id", Mina.getNetworkId());
 
     const balance = await accountBalanceMina(sender);
-
     const fee = Number((await getFee()).toBigInt());
-
     const contractAddress = PublicKey.fromBase58(tokenPublicKey);
     if (DEBUG) console.log("Contract", contractAddress.toBase58());
     const adminContractPublicKey = PublicKey.fromBase58(
@@ -216,10 +155,8 @@ export async function mintToken(params: {
     if (!Mina.hasAccount(sender)) {
       console.error("Sender does not have account");
 
-      logItem({
-        id: "account-not-found",
+      updateLogItem(id, {
         status: "error",
-        title: "Account Not Found",
         description: `Account ${sender.toBase58()} not found. Please fund your account or try again later, after all the previous transactions are included in the block.`,
         date: new Date(),
       });
@@ -229,15 +166,13 @@ export async function mintToken(params: {
         error: "Sender does not have account",
       };
     }
-    const isNewAccount = Mina.hasAccount(to, tokenId);
+    const isNewAccount = Mina.hasAccount(to, tokenId) === false;
     const requiredBalance = isNewAccount
       ? 1
       : 0 + (MINT_FEE + fee) / 1_000_000_000;
     if (requiredBalance > balance) {
-      logItem({
-        id: "insufficient-balance",
+      updateLogItem(id, {
         status: "error",
-        title: "Insufficient Balance",
         description: `Insufficient balance of the sender: ${balance} MINA. Required: ${requiredBalance} MINA`,
         date: new Date(),
       });
@@ -248,6 +183,7 @@ export async function mintToken(params: {
     }
 
     console.log("Sender balance:", await accountBalanceMina(sender));
+    await sleep(1000);
 
     const tx = await Mina.transaction(
       { sender, fee, memo, nonce },
@@ -273,14 +209,14 @@ export async function mintToken(params: {
       feePayer: {
         fee: fee,
         memo: memo,
+        nonce,
       },
     };
     console.timeEnd("prepared tx");
     console.timeEnd("ready to sign");
-    updateLogItem("transaction", {
-      status: "waiting",
-      title: "Deploy transaction is prepared",
-      description: "Deploy transaction is prepared, please sign it",
+    await sleep(1000);
+    updateLogItem(id, {
+      description: `Mint transaction is prepared, please sign it setting nonce ${nonce} in Auro Wallet advanced settings`,
       date: new Date(),
     });
     console.time("sent transaction");
@@ -293,11 +229,9 @@ export async function mintToken(params: {
       signedData = txResult?.signedData;
       if (signedData === undefined) {
         if (DEBUG) console.log("No signed data");
-        updateLogItem("transaction", {
+        updateLogItem(id, {
           status: "error",
-          title: "No user signature received",
-          description:
-            "No user signature received, deploy transaction cancelled",
+          description: "No user signature received, mint transaction cancelled",
           date: new Date(),
         });
         return {
@@ -307,17 +241,8 @@ export async function mintToken(params: {
       }
     }
 
-    updateLogItem("transaction", {
-      status: "success",
-      title: "User signature received",
-      description: "User signature received, proceeding with deployment",
-      date: new Date(),
-    });
-    logItem({
-      id: "cloud-proving-job",
-      status: "waiting",
-      title: "Starting cloud proving job",
-      description: "Starting cloud proving job...",
+    updateLogItem(id, {
+      description: "User signature received, starting cloud proving job",
       date: new Date(),
     });
     const jobId = await sendMintTransaction({
@@ -326,18 +251,20 @@ export async function mintToken(params: {
       adminContractPublicKey: adminContractPublicKey.toBase58(),
       tokenPublicKey: contractAddress.toBase58(),
       adminPublicKey: sender.toBase58(),
+      to: to.toBase58(),
+      amount: Number(amount.toBigInt()),
       chain,
       symbol,
+      sendTransaction: false,
     });
     console.timeEnd("sent transaction");
     if (DEBUG) console.log("Sent transaction, jobId", jobId);
     if (jobId === undefined) {
       console.error("JobId is undefined");
-      updateLogItem("cloud-proving-job", {
+      updateLogItem(id, {
         status: "error",
-        title: "Cloud proving job was failed to start",
         description:
-          "Cloud proving job was failed to start, transaction is cancelled",
+          "Cloud proving job was failed to start, mint transaction is cancelled",
         date: new Date(),
       });
       return {
@@ -352,9 +279,18 @@ export async function mintToken(params: {
     };
   } catch (error) {
     console.error("Error in deployToken", error);
+    updateLogItem(id, {
+      status: "error",
+      description: String(error) ?? "Error while minting token",
+      date: new Date(),
+    });
     return {
       success: false,
       error: String(error) ?? "Error while deploying token",
     };
   }
+}
+
+async function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
