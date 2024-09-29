@@ -1,18 +1,11 @@
 "use server";
 
-import { zkCloudWorkerClient, FungibleTokenDeployParams } from "zkcloudworker";
-
-export interface FungibleTokenMintParams {
-  tokenPublicKey: string;
-  adminContractPublicKey: string;
-  adminPublicKey: string;
-  chain: string;
-  symbol: string;
-  serializedTransaction: string;
-  signedData: string;
-  to: string;
-  amount: number;
-}
+import {
+  zkCloudWorkerClient,
+  FungibleTokenDeployParams,
+  FungibleTokenMintParams,
+  FungibleTokenJobResult,
+} from "zkcloudworker";
 
 const ZKCW_JWT = process.env.ZKCW_JWT;
 const NEXT_PUBLIC_CHAIN = process.env.NEXT_PUBLIC_CHAIN;
@@ -49,6 +42,7 @@ export async function sendDeployTransaction(
     metadata: `deploy token ${symbol}`,
   });
   console.log("answer:", answer);
+  // TODO: handle errors and structure FungibleTokenJobResult
   const jobId = answer.jobId;
   if (jobId === undefined) console.error("Job ID is undefined");
   return jobId;
@@ -77,6 +71,7 @@ export async function sendMintTransaction(
   return jobId;
 }
 
+// TODO add getResult function and use it with REACT setInterval()
 export async function waitForJobResult(
   jobId: string
 ): Promise<string | undefined> {
@@ -85,7 +80,10 @@ export async function waitForJobResult(
     jobId,
     printLogs: true,
   });
-  console.log("Token deployment result:", deployResult?.result?.result);
+  console.log(
+    "waitForJobResult result:",
+    deployResult?.result?.result?.slice(0, 50)
+  );
   console.timeEnd(`Deployed contract`);
   return deployResult?.result?.result ?? "error";
 }

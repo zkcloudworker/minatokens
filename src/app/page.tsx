@@ -1,6 +1,12 @@
 "use client";
 
-import { useState, useRef, Dispatch, SetStateAction } from "react";
+import {
+  useState,
+  useRef,
+  Dispatch,
+  SetStateAction,
+  createElement,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -22,23 +28,19 @@ import {
   updateTimelineItem,
 } from "@/components/ui/timeline";
 import { useDropzone } from "react-dropzone";
-import { getTxStatus } from "@/lib/txstatus";
+import { getTxStatusFast } from "@/lib/txstatus-fast";
 import { connectWallet, getWalletInfo } from "@/lib/wallet";
 import { getSystemInfo } from "@/lib/system-info";
 import { loadLibraries } from "@/lib/libraries";
 import { verifyFungibleTokenState } from "@/lib/verify";
 import { sendTransaction } from "@/lib/send";
 import { getAccountNonce } from "@/lib/nonce";
-import { checkMintData } from "@/lib/address";
+import { checkMintData, Mint, MintVerified } from "@/lib/address";
 
 const DEBUG = process.env.NEXT_PUBLIC_DEBUG === "true";
 const AURO_TEST = process.env.NEXT_PUBLIC_AURO_TEST === "true";
 const ADMIN_ADDRESS = process.env.NEXT_PUBLIC_ADMIN_PK;
-
-interface Mint {
-  amount: string;
-  to: string;
-}
+let minted = 0;
 
 export default function LaunchToken() {
   const [image, setImage] = useState<File | undefined>(undefined);
@@ -65,7 +67,6 @@ export default function LaunchToken() {
       }>
     | undefined
   >(undefined);
-  const [minted, setMinted] = useState<number>(0);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const onDrop = (acceptedFiles: File[]) => {
@@ -203,23 +204,19 @@ export default function LaunchToken() {
       date: new Date(),
       status: "waiting",
     });
-    let status = "pending";
-    let errorCount = 0;
-    let tx = await getTxStatus({ hash });
+    let ok = await getTxStatusFast({ hash });
+    let count = 0;
     if (DEBUG)
-      console.log("Waiting for Mina transaction to be mined...", status, tx);
-    if (tx?.txStatus) status = tx.txStatus;
-    else errorCount++;
-    while (status === "pending" && !isError && errorCount < 100) {
+      console.log("Waiting for Mina transaction to be mined...", status, ok);
+    while (!ok && !isError && count < 100) {
       if (DEBUG)
-        console.log("Waiting for Mina transaction to be mined...", status, tx);
+        console.log("Waiting for Mina transaction to be mined...", ok, hash);
       await sleep(10000);
-      tx = await getTxStatus({ hash });
-      if (tx?.txStatus) status = tx.txStatus;
-      else errorCount++;
+      ok = await getTxStatusFast({ hash });
+      count++;
     }
-    if (DEBUG) console.log("Final tx status", { status, errorCount, tx });
-    if (status !== "applied" || isError) {
+    if (DEBUG) console.log("Final tx status", { ok, count });
+    if (!ok || isError) {
       updateLogItem(id, {
         status: "error",
         title: failedTitle,
@@ -343,13 +340,11 @@ export default function LaunchToken() {
     });
     let result = await waitForJobResult(jobId);
 
-    if (!result || result.toLowerCase().startsWith("error")) {
+    if (!result || result.toLowerCase().startsWith("error") || isError) {
       updateLogItem(id, {
         status: "error",
         title: failedTitle,
-        description: isError
-          ? "Cancelled"
-          : "Failed to prove and send transaction",
+        description: isError ? "Cancelled" : "Failed to prove transaction",
         date: new Date(),
       });
       setWaitingItem(undefined);
@@ -396,6 +391,192 @@ export default function LaunchToken() {
     return transaction;
   }
 
+  async function waitForMintJob(params: {
+    jobId: string;
+    id: string;
+    sequence: number;
+  }): Promise<string | undefined> {
+    const { jobId, id, sequence } = params;
+    updateLogItem(id, {
+      description: (
+        <>
+          It can take about a minute to prove the transaction with jobId{" "}
+          <a
+            href={`https://zkcloudworker.com/job/${jobId}`}
+            className="text-blue-500 hover:underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {jobId}
+          </a>
+          .
+        </>
+      ),
+      date: new Date(),
+    });
+    await sleep(10000);
+    let result = await waitForJobResult(jobId);
+
+    if (!result || result.toLowerCase().startsWith("error") || isError) {
+      updateLogItem(id, {
+        status: "error",
+        description: isError ? "Cancelled" : "Failed to prove transaction",
+        date: new Date(),
+      });
+      setWaitingItem(undefined);
+      setIsError(true);
+      return undefined;
+    }
+    let transaction: string | undefined = undefined;
+    try {
+      const { success, tx } = JSON.parse(result);
+      transaction = success === true ? tx : undefined;
+    } catch (error) {
+      console.error("waitForProveJob catch while parsing result", error);
+    }
+    if (transaction === undefined) {
+      updateLogItem(id, {
+        status: "error",
+        description: "Failed to prove transaction",
+        date: new Date(),
+      });
+      setWaitingItem(undefined);
+      setIsError(true);
+      return undefined;
+    }
+    updateLogItem(id, {
+      description: (
+        <>
+          Successfully proved the transaction with jobId{" "}
+          <a
+            href={`https://zkcloudworker.com/job/${jobId}`}
+            className="text-blue-500 hover:underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {jobId}
+          </a>
+          , waiting for previous transactions to be sent...
+        </>
+      ),
+      date: new Date(),
+    });
+    while (sequence != minted && !isError) {
+      await sleep(1000);
+    }
+    if (isError) {
+      updateLogItem(id, {
+        status: "error",
+        description: "Cancelled",
+        date: new Date(),
+      });
+      return;
+    }
+    updateLogItem(id, {
+      description: (
+        <>
+          Successfully proved the transaction with jobId{" "}
+          <a
+            href={`https://zkcloudworker.com/job/${jobId}`}
+            className="text-blue-500 hover:underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {jobId}
+          </a>
+          , sending transaction to Mina blockchain...
+        </>
+      ),
+      date: new Date(),
+    });
+    const sendResult = await sendTransaction(transaction);
+    if (DEBUG) console.log("Transaction sent:", sendResult);
+    if (
+      isError ||
+      sendResult.success === false ||
+      sendResult.hash === undefined
+    ) {
+      updateLogItem(id, {
+        status: "error",
+        description: isError
+          ? "Cancelled"
+          : "Failed to send transaction to Mina blockchain",
+        date: new Date(),
+      });
+      setIsError(true);
+      return;
+    }
+    const hash = sendResult.hash;
+    minted++;
+    updateLogItem(id, {
+      description: (
+        <>
+          Successfully proved the transaction with jobId{" "}
+          <a
+            href={`https://zkcloudworker.com/job/${jobId}`}
+            className="text-blue-500 hover:underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {jobId}
+          </a>{" "}
+          and successfully sent the transaction to Mina blockchain with hash{" "}
+          <a
+            href={`https://minascan.io/devnet/tx/${hash}`}
+            className="text-blue-500 hover:underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {hash}
+          </a>
+          , waiting for it to be included in the block...
+        </>
+      ),
+      date: new Date(),
+    });
+
+    let ok = await getTxStatusFast({ hash });
+    let count = 0;
+    if (DEBUG)
+      console.log("Waiting for Mina transaction to be mined...", status, ok);
+    while (!ok && !isError && count < 100) {
+      if (DEBUG)
+        console.log("Waiting for Mina transaction to be mined...", ok, hash);
+      await sleep(10000);
+      ok = await getTxStatusFast({ hash });
+      count++;
+    }
+    if (DEBUG) console.log("Final tx status", { ok, count });
+    if (!ok || isError) {
+      updateLogItem(id, {
+        status: "error",
+        description: isError ? "Cancelled" : "Failed to mint tokens",
+        date: new Date(),
+      });
+      setWaitingItem(undefined);
+      setIsError(true);
+      return;
+    }
+    updateLogItem(id, {
+      status: "success",
+      description: (
+        <>
+          Successfully minted tokens with transaction hash{" "}
+          <a
+            href={`https://minascan.io/devnet/tx/${hash}?type=zk-tx`}
+            className="text-blue-500 hover:underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {hash}
+          </a>
+          .
+        </>
+      ),
+      date: new Date(),
+    });
+  }
+
   function logWaitingItem(params: {
     title: string;
     description: React.ReactNode;
@@ -428,7 +609,8 @@ export default function LaunchToken() {
       title: "Issuing token",
       description: "Checking data...",
     });
-    const mintItems: Mint[] = [];
+    const mintItems: MintVerified[] = [];
+    if (DEBUG) console.log("Mint items:", mint);
     for (const item of mint) {
       if (
         item.amount !== "" &&
@@ -436,9 +618,12 @@ export default function LaunchToken() {
         item.amount !== undefined &&
         item.to !== undefined
       ) {
-        if (await checkMintData({ to: item.to, amount: item.amount })) {
-          mintItems.push(item);
+        const verified = await checkMintData(item);
+        if (verified !== undefined) {
+          if (DEBUG) console.log("Mint item verified:", verified, item);
+          mintItems.push(verified);
         } else {
+          if (DEBUG) console.log("Mint item skipped:", item);
           setIsError(true);
           logItem({
             id: "mint",
@@ -452,6 +637,7 @@ export default function LaunchToken() {
         }
       }
     }
+    if (DEBUG) console.log("Mint items filtered:", mintItems);
 
     setIssued(false);
     setIsError(false);
@@ -578,6 +764,7 @@ export default function LaunchToken() {
         <>
           <a
             href={url}
+            download={name}
             className="text-blue-500 hover:underline"
             target="_blank"
             rel="noopener noreferrer"
@@ -625,7 +812,7 @@ export default function LaunchToken() {
     });
 
     const transaction = await waitForProveJobPromise;
-    if (DEBUG) console.log("Transaction proved:", transaction);
+    if (DEBUG) console.log("Transaction proved:", transaction?.slice(0, 50));
     if (isError || !transaction) {
       return;
     }
@@ -683,15 +870,33 @@ export default function LaunchToken() {
       console.log("Minting tokens", mintItems);
     }
 
+    minted = 0;
     if (mintItems.length > 0) {
-      logItem({
-        id: "mint",
-        status: "waiting",
+      logWaitingItem({
         title: "Minting tokens",
-        description: `Minted tokens to ${minted} of ${mintItems.length} addresses`,
-        date: new Date(),
+        description: createElement(
+          "span",
+          null,
+          "Loading ",
+          createElement(
+            "a",
+            {
+              href: "https://docs.minaprotocol.com/zkapps/o1js",
+              target: "_blank",
+              rel: "noopener noreferrer",
+            },
+            "o1js"
+          ),
+          " library..."
+        ),
+      });
+      const lib = await (libraries ?? loadLibraries());
+      logWaitingItem({
+        title: "Minting tokens",
+        description: `Preparing data to mint ${tokenSymbol} tokens to ${mintItems.length} addresses`,
       });
       let nonce = await getAccountNonce(adminPublicKey);
+      let mintPromises: Promise<string | undefined>[] = [];
       for (let i = 0; i < mintItems.length; i++) {
         const item = mintItems[i];
         const id = `mint-${i}`;
@@ -699,9 +904,21 @@ export default function LaunchToken() {
           id,
           status: "waiting",
           title: `Minting ${item.amount} ${tokenSymbol} to ${item.to}`,
-          description: `Checking data...`,
+          description: `Building transaction...`,
           date: new Date(),
         });
+        if (i === mintItems.length - 1)
+          logWaitingItem({
+            title: "Minting tokens",
+            description: `Waiting for mint transactions to be created and proved`,
+          });
+        else
+          logWaitingItem({
+            title: "Minting tokens",
+            description: `Preparing data to mint ${tokenSymbol} tokens to ${
+              mintItems.length - (i + 1)
+            } addresses`,
+          });
         const mintResult = await mintToken({
           tokenPublicKey,
           adminContractPublicKey,
@@ -710,12 +927,72 @@ export default function LaunchToken() {
           amount: item.amount,
           nonce: nonce++,
           id,
-          logItem,
           updateLogItem,
           symbol: tokenSymbol,
-          libraries: libraries ?? loadLibraries(),
+          lib,
         });
+        if (
+          mintResult.success === false ||
+          mintResult.jobId === undefined ||
+          isError
+        ) {
+          logItem({
+            id,
+            status: "error",
+            title: "Failed to mint tokens",
+            description: mintResult.error ?? "Mint error",
+            date: new Date(),
+          });
+          setWaitingItem(undefined);
+          setIsError(true);
+          return;
+        }
+        const mintJobId = mintResult.jobId;
+        await sleep(1000);
+
+        const waitForMintJobPromise = waitForMintJob({
+          jobId: mintJobId,
+          id: `mint-${i}`,
+          sequence: i,
+        });
+        mintPromises.push(waitForMintJobPromise);
       }
+      if (isError) {
+        logItem({
+          id: "mint",
+          status: "error",
+          title: "Failed to mint tokens",
+          description: "Failed to mint tokens",
+          date: new Date(),
+        });
+        setWaitingItem(undefined);
+        setIsError(true);
+        return;
+      }
+      logWaitingItem({
+        title: "Minting tokens",
+        description: `Waiting for mint transactions to be included into a block`,
+      });
+      await Promise.all(mintPromises);
+      if (isError) {
+        logItem({
+          id: "mint",
+          status: "error",
+          title: "Failed to mint tokens",
+          description: "Failed to mint tokens",
+          date: new Date(),
+        });
+        setWaitingItem(undefined);
+        setIsError(true);
+        return;
+      }
+      logItem({
+        id: "mint",
+        status: "success",
+        title: `Tokens are minted to ${mintItems.length} addresses`,
+        description: `All mint transactions are included into a block`,
+        date: new Date(),
+      });
     }
     setWaitingItem(undefined);
     setIssuing(false);
