@@ -4,6 +4,7 @@ import {
   zkCloudWorkerClient,
   FungibleTokenDeployParams,
   FungibleTokenMintParams,
+  FungibleTokenTransferParams,
   FungibleTokenJobResult,
 } from "zkcloudworker";
 
@@ -64,6 +65,29 @@ export async function sendMintTransaction(
     task: "mint",
     args: JSON.stringify({ sender: params.adminPublicKey }),
     metadata: `mint token ${symbol}`,
+  });
+  console.log("answer:", answer);
+  const jobId = answer.jobId;
+  if (jobId === undefined) console.error("Job ID is undefined");
+  return jobId;
+}
+
+export async function sendTransferTransaction(
+  params: FungibleTokenTransferParams
+): Promise<string | undefined> {
+  const { symbol } = params;
+  console.log(`Transferring tokens...`);
+  const api = getAPI();
+
+  const transaction = JSON.stringify(params, null, 2);
+
+  const answer = await api.execute({
+    developer: "DFST",
+    repo: "token-launchpad",
+    transactions: [transaction],
+    task: "transfer",
+    args: JSON.stringify({ sender: params.from }),
+    metadata: `transfer token ${symbol}`,
   });
   console.log("answer:", answer);
   const jobId = answer.jobId;
