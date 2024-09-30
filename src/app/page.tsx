@@ -341,7 +341,7 @@ export default function LaunchToken() {
     await sleep(10000);
     let result = await getResult(jobId);
     while (!result) {
-      await sleep(10000);
+      await sleep(10000); // TODO: use setInterval
       result = await getResult(jobId);
     }
 
@@ -422,7 +422,7 @@ export default function LaunchToken() {
     await sleep(10000);
     let result = await getResult(jobId);
     while (!result) {
-      await sleep(10000);
+      await sleep(10000); // TODO: use setInterval
       result = await getResult(jobId);
     }
 

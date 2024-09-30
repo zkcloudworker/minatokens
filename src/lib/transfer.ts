@@ -1,19 +1,17 @@
 "use client";
 
-import { sendMintTransaction } from "./zkcloudworker";
+import { sendTransferTransaction } from "./zkcloudworker";
 import { TimelineItem } from "../components/ui/timeline";
 
 const DEBUG = process.env.NEXT_PUBLIC_DEBUG === "true";
 const chain = process.env.NEXT_PUBLIC_CHAIN;
 const WALLET = process.env.NEXT_PUBLIC_WALLET;
 const AURO_TEST = process.env.NEXT_PUBLIC_AURO_TEST === "true";
-const MINT_FEE = 1e8;
-const ISSUE_FEE = 1e9;
+const TRANSFER_FEE = 1e8;
 
-export async function mintToken(params: {
+export async function transferToken(params: {
   tokenPublicKey: string;
-  adminContractPublicKey: string;
-  adminPublicKey: string;
+  from: string;
   to: string;
   amount: number;
   symbol: string;
@@ -34,16 +32,8 @@ export async function mintToken(params: {
     throw new Error("NEXT_PUBLIC_CHAIN must be devnet or mainnet");
   if (WALLET === undefined) throw new Error("NEXT_PUBLIC_WALLET is undefined");
   console.time("ready to sign");
-  if (DEBUG) console.log("mint token", params);
-  const {
-    tokenPublicKey,
-    adminPublicKey,
-    symbol,
-    lib,
-    updateLogItem,
-    nonce,
-    id,
-  } = params;
+  if (DEBUG) console.log("transfer token", params);
+  const { tokenPublicKey, symbol, lib, updateLogItem, nonce, id } = params;
   try {
     const mina = (window as any).mina;
     if (mina === undefined || mina?.isAuro !== true) {
@@ -60,16 +50,7 @@ export async function mintToken(params: {
     }
 
     const {
-      o1js: {
-        PrivateKey,
-        PublicKey,
-        UInt64,
-        Mina,
-        AccountUpdate,
-        UInt8,
-        Bool,
-        Field,
-      },
+      o1js: { PrivateKey, PublicKey, UInt64, Mina, AccountUpdate },
       zkcloudworker: {
         FungibleToken,
         serializeTransaction,
@@ -98,7 +79,7 @@ export async function mintToken(params: {
     }
     const sender = AURO_TEST
       ? adminPrivateKey.toPublicKey()
-      : PublicKey.fromBase58(adminPublicKey);
+      : PublicKey.fromBase58(params.from);
 
     if (DEBUG) console.log("initializing blockchain", chain);
     const net = await initBlockchain(chain);
@@ -110,10 +91,6 @@ export async function mintToken(params: {
     const fee = Number((await getFee()).toBigInt());
     const contractAddress = PublicKey.fromBase58(tokenPublicKey);
     if (DEBUG) console.log("Contract", contractAddress.toBase58());
-    const adminContractPublicKey = PublicKey.fromBase58(
-      params.adminContractPublicKey
-    );
-    if (DEBUG) console.log("Admin Contract", adminContractPublicKey.toBase58());
     const wallet = PublicKey.fromBase58(WALLET);
     const zkToken = new FungibleToken(contractAddress);
     const tokenId = zkToken.deriveTokenId();
@@ -121,20 +98,22 @@ export async function mintToken(params: {
     if (DEBUG) console.log(`Sending tx...`);
     console.time("prepared tx");
     const memo =
-      `mint ${Number(amount.toBigInt()) / 1_000_000_000} ${symbol}`.length > 30
-        ? `mint ${symbol}`.substring(0, 30)
-        : `mint ${Number(amount.toBigInt()) / 1_000_000_000} ${symbol}`;
+      `transfer ${Number(amount.toBigInt()) / 1_000_000_000} ${symbol}`.length >
+      30
+        ? `transfer ${symbol}`.substring(0, 30)
+        : `transfer ${Number(amount.toBigInt()) / 1_000_000_000} ${symbol}`;
 
     await fetchMinaAccount({
       publicKey: sender,
       force: true,
     });
     await fetchMinaAccount({
-      publicKey: contractAddress,
+      publicKey: sender,
+      tokenId,
       force: true,
     });
     await fetchMinaAccount({
-      publicKey: adminContractPublicKey,
+      publicKey: contractAddress,
       force: true,
     });
     await fetchMinaAccount({
@@ -169,7 +148,7 @@ export async function mintToken(params: {
     const isNewAccount = Mina.hasAccount(to, tokenId) === false;
     const requiredBalance = isNewAccount
       ? 1
-      : 0 + (MINT_FEE + fee) / 1_000_000_000;
+      : 0 + (TRANSFER_FEE + fee) / 1_000_000_000;
     if (requiredBalance > balance) {
       updateLogItem(id, {
         status: "error",
@@ -192,9 +171,9 @@ export async function mintToken(params: {
         const provingFee = AccountUpdate.createSigned(sender);
         provingFee.send({
           to: PublicKey.fromBase58(WALLET),
-          amount: UInt64.from(MINT_FEE),
+          amount: UInt64.from(TRANSFER_FEE),
         });
-        await zkToken.mint(to, amount);
+        await zkToken.transfer(sender, to, amount);
       }
     );
     if (AURO_TEST) tx.sign([adminPrivateKey]);
@@ -216,7 +195,7 @@ export async function mintToken(params: {
     console.timeEnd("ready to sign");
     await sleep(1000);
     updateLogItem(id, {
-      description: `Mint transaction is prepared, please sign it setting nonce ${nonce} in Auro Wallet advanced settings`,
+      description: `Transfer transaction is prepared, please sign it setting nonce ${nonce} in Auro Wallet advanced settings`,
       date: new Date(),
     });
     console.time("sent transaction");
@@ -231,7 +210,8 @@ export async function mintToken(params: {
         if (DEBUG) console.log("No signed data");
         updateLogItem(id, {
           status: "error",
-          description: "No user signature received, mint transaction cancelled",
+          description:
+            "No user signature received, transfer transaction cancelled",
           date: new Date(),
         });
         return {
@@ -245,12 +225,11 @@ export async function mintToken(params: {
       description: "User signature received, starting cloud proving job",
       date: new Date(),
     });
-    const jobId = await sendMintTransaction({
+    const jobId = await sendTransferTransaction({
       serializedTransaction,
       signedData,
-      adminContractPublicKey: adminContractPublicKey.toBase58(),
       tokenPublicKey: contractAddress.toBase58(),
-      adminPublicKey: sender.toBase58(),
+      from: sender.toBase58(),
       to: to.toBase58(),
       amount: Number(amount.toBigInt()),
       chain,
@@ -264,7 +243,7 @@ export async function mintToken(params: {
       updateLogItem(id, {
         status: "error",
         description:
-          "Cloud proving job was failed to start, mint transaction is cancelled",
+          "Cloud proving job was failed to start, transfer transaction is cancelled",
         date: new Date(),
       });
       return {
@@ -278,15 +257,15 @@ export async function mintToken(params: {
       jobId,
     };
   } catch (error) {
-    console.error("Error in mintToken", error);
+    console.error("Error in transferToken", error);
     updateLogItem(id, {
       status: "error",
-      description: String(error) ?? "Error while minting token",
+      description: String(error) ?? "Error while transferring token",
       date: new Date(),
     });
     return {
       success: false,
-      error: String(error) ?? "Error while minting token",
+      error: String(error) ?? "Error while transferring token",
     };
   }
 }
