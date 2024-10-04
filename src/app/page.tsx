@@ -36,6 +36,7 @@ let minted = 0;
 export default function LaunchToken() {
   const [tokenSymbol, setTokenSymbol] = useState<string>("TEST");
   const [useHardcodedWallet, setUseHardcodedWallet] = useState<boolean>(false);
+  const [useTinyContract, setUseTinyContract] = useState<boolean>(false);
   const [mint, setMint] = useState<Mint[]>([
     {
       amount: "1000",
@@ -404,6 +405,7 @@ export default function LaunchToken() {
       logItem,
       updateLogItem,
       useHardcodedWallet,
+      useTinyContract,
     });
     if (DEBUG) console.log("Deploy result:", deployResult);
     if (
@@ -607,6 +609,30 @@ export default function LaunchToken() {
                   }}
                 />
               </div>
+              <div className="flex items-center">
+                <input
+                  id="use-hardcoded-wallet"
+                  type="checkbox"
+                  className="mr-2"
+                  checked={useHardcodedWallet}
+                  onChange={(e) => setUseHardcodedWallet(e.target.checked)}
+                />
+                <Label htmlFor="use-hardcoded-wallet">
+                  Use hardcoded wallet instead of Auro Wallet
+                </Label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  id="use-tiny-contract"
+                  type="checkbox"
+                  className="mr-2"
+                  checked={useTinyContract}
+                  onChange={(e) => setUseTinyContract(e.target.checked)}
+                />
+                <Label htmlFor="use-tiny-contract">
+                  Use TinyContract first to send zkApp tx
+                </Label>
+              </div>
 
               <div className="flex items-center">
                 <Label htmlFor="initial-mint">Mint Addresses</Label>
@@ -620,18 +646,6 @@ export default function LaunchToken() {
                 >
                   <PlusIcon className="h-4 w-4 mr-1" />
                 </button>
-              </div>
-              <div className="flex items-center">
-                <input
-                  id="use-hardcoded-wallet"
-                  type="checkbox"
-                  className="mr-2"
-                  checked={useHardcodedWallet}
-                  onChange={(e) => setUseHardcodedWallet(e.target.checked)}
-                />
-                <Label htmlFor="use-hardcoded-wallet">
-                  Use hardcoded wallet instead of Auro Wallet
-                </Label>
               </div>
 
               {mint.map((key, index) => (

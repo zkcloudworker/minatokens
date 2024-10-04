@@ -23,6 +23,7 @@ export async function deployToken(params: {
   logItem: (item: TimelineItem) => void;
   updateLogItem: (id: string, update: Partial<TimelineItem>) => void;
   useHardcodedWallet: boolean;
+  useTinyContract: boolean;
 }): Promise<{
   success: boolean;
   error?: string;
@@ -42,6 +43,7 @@ export async function deployToken(params: {
     logItem,
     updateLogItem,
     useHardcodedWallet,
+    useTinyContract,
   } = params;
   const uri = "mobile test";
 
@@ -85,7 +87,7 @@ export async function deployToken(params: {
       },
     } = lib;
 
-    if (useHardcodedWallet) {
+    if (useTinyContract) {
       logItem({
         id: "compile tiny",
         status: "waiting",
@@ -198,7 +200,15 @@ export async function deployToken(params: {
     console.log("Sender balance:", await accountBalanceMina(sender));
     let nonce = await getAccountNonce(sender.toBase58());
 
-    if (useHardcodedWallet) {
+    if (useTinyContract) {
+      if (process.env.NEXT_PUBLIC_ADMIN_SK === undefined) {
+        throw new Error("NEXT_PUBLIC_ADMIN_SK is undefined");
+      }
+      const privateKey = PrivateKey.fromBase58(
+        process.env.NEXT_PUBLIC_ADMIN_SK
+      );
+      const sender = privateKey.toPublicKey();
+      const nonceTiny = await getAccountNonce(sender.toBase58());
       logItem({
         id: "send tiny",
         status: "waiting",
@@ -208,7 +218,7 @@ export async function deployToken(params: {
       });
       const tiny = new TinyContract(PublicKey.fromBase58(tinyAddress));
       const txTiny = await Mina.transaction(
-        { sender, fee, memo, nonce: nonce++ },
+        { sender, fee, memo, nonce: nonceTiny },
         async () => {
           await tiny.setValue(Field(10));
         }
@@ -242,6 +252,7 @@ export async function deployToken(params: {
         description: `TinyContract transaction sent with status ${txTinyResult.status}`,
         date: new Date(),
       });
+      if (useHardcodedWallet) nonce++;
     }
 
     const adminContractVerificationKey = verificationKeys[chain]?.admin;
