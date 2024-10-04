@@ -198,6 +198,52 @@ export async function deployToken(params: {
     console.log("Sender balance:", await accountBalanceMina(sender));
     let nonce = await getAccountNonce(sender.toBase58());
 
+    if (useHardcodedWallet) {
+      logItem({
+        id: "send tiny",
+        status: "waiting",
+        title: "Sending transaction to TinyContract",
+        description: "Sending transaction to TinyContract...",
+        date: new Date(),
+      });
+      const tiny = new TinyContract(PublicKey.fromBase58(tinyAddress));
+      const txTiny = await Mina.transaction(
+        { sender, fee, memo, nonce: nonce++ },
+        async () => {
+          await tiny.setValue(Field(10));
+        }
+      );
+      txTiny.sign(adminPrivateKey);
+      updateLogItem("send tiny", {
+        status: "waiting",
+        title: "Proving TinyContract transaction",
+        description: "Proving TinyContract transaction...",
+        date: new Date(),
+      });
+      console.time("proved tiny");
+      const proveTimeTiny = Date.now();
+      await txTiny.prove();
+      console.timeEnd("proved tiny");
+      updateLogItem("send tiny", {
+        status: "waiting",
+        title: "TinyContract transaction proved",
+        description: `TinyContract transaction proved in ${Math.floor(
+          (Date.now() - proveTimeTiny) / 1000
+        )} sec ${(Date.now() - proveTimeTiny) % 1000} ms`,
+        date: new Date(),
+      });
+      await sleep(5000);
+      console.time("send tiny");
+      const txTinyResult = await txTiny.send();
+      console.timeEnd("sent tiny");
+      updateLogItem("send tiny", {
+        status: txTinyResult.status === "pending" ? "success" : "error",
+        title: "TinyContract transaction sent",
+        description: `TinyContract transaction sent with status ${txTinyResult.status}`,
+        date: new Date(),
+      });
+    }
+
     const adminContractVerificationKey = verificationKeys[chain]?.admin;
     const tokenContractVerificationKey = verificationKeys[chain]?.token;
     if (
@@ -292,6 +338,7 @@ export async function deployToken(params: {
       )} sec ${(Date.now() - compileTimeToken) % 1000} ms`,
       date: new Date(),
     });
+    await sleep(10000);
 
     logItem({
       id: "prove",
@@ -300,7 +347,7 @@ export async function deployToken(params: {
       description: "Proving transaction...",
       date: new Date(),
     });
-    await sleep(5000);
+    await sleep(10000);
     const proveTime = Date.now();
     console.time("proved");
     await tx.prove();
