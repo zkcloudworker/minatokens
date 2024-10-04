@@ -194,8 +194,8 @@ export function Timeline(params: TimelineProps) {
 
   return (
     <div className="container mx-auto p-4 max-w-full sm:max-w-2xl">
-      <h1 className="text-lg font-bold mb-4">{title}</h1>
-      <div className="space-y-2">
+      <h1 className="text-xl font-bold mb-4">{title}</h1>
+      <div className="space-y-3">
         {allItems.map((item, index) => (
           <div
             key={item.id + item.date.toUTCString() + item.title}
@@ -203,25 +203,23 @@ export function Timeline(params: TimelineProps) {
           >
             <div
               className={cn(
-                "flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center",
+                "flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center",
                 statusColors[item.status]
               )}
             >
               {React.createElement(statusIcons[item.status], {
-                className: "w-3 h-3",
+                className: "w-4 h-4",
                 "aria-hidden": "true",
               })}
             </div>
-            <div className="ml-2 flex-grow">
+            <div className="ml-3 flex-grow">
               <div className="flex items-center justify-between">
-                <h2 className="text-xxs font-semibold">{item.title}</h2>
-                <span className="text-xxs text-gray-500">
+                <h2 className="text-xs font-semibold">{item.title}</h2>
+                <span className="text-xs text-gray-500">
                   {formatTime(item.date)}
                 </span>
               </div>
-              <p className="text-xxs text-gray-600 mt-0.5">
-                {item.description}
-              </p>
+              <p className="text-xs text-gray-600 mt-0.5">{item.description}</p>
             </div>
           </div>
         ))}
