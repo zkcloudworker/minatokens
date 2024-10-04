@@ -110,14 +110,6 @@ export async function deployToken(params: {
       await sleep(5000);
     }
 
-    logItem({
-      id: "transaction",
-      status: "waiting",
-      title: "Preparing transaction",
-      description: "Preparing the transaction for deployment...",
-      date: new Date(),
-    });
-
     let adminPrivateKey = PrivateKey.empty();
     if (useHardcodedWallet) {
       if (process.env.NEXT_PUBLIC_ADMIN_SK === undefined) {
@@ -204,11 +196,7 @@ export async function deployToken(params: {
       if (process.env.NEXT_PUBLIC_ADMIN_SK === undefined) {
         throw new Error("NEXT_PUBLIC_ADMIN_SK is undefined");
       }
-      const privateKey = PrivateKey.fromBase58(
-        process.env.NEXT_PUBLIC_ADMIN_SK
-      );
-      const sender = privateKey.toPublicKey();
-      const nonceTiny = await getAccountNonce(sender.toBase58());
+
       logItem({
         id: "send tiny",
         status: "waiting",
@@ -216,14 +204,23 @@ export async function deployToken(params: {
         description: "Sending transaction to TinyContract...",
         date: new Date(),
       });
+      const privateKeyTiny = PrivateKey.fromBase58(
+        process.env.NEXT_PUBLIC_ADMIN_SK
+      );
+      const senderTiny = privateKeyTiny.toPublicKey();
+      await fetchMinaAccount({
+        publicKey: senderTiny,
+        force: true,
+      });
+      const nonceTiny = await getAccountNonce(senderTiny.toBase58());
       const tiny = new TinyContract(PublicKey.fromBase58(tinyAddress));
       const txTiny = await Mina.transaction(
-        { sender, fee, memo, nonce: nonceTiny },
+        { sender: senderTiny, fee, memo: "tiny tx", nonce: nonceTiny },
         async () => {
           await tiny.setValue(Field(10));
         }
       );
-      txTiny.sign(adminPrivateKey);
+      txTiny.sign([privateKeyTiny]);
       updateLogItem("send tiny", {
         status: "waiting",
         title: "Proving TinyContract transaction",
@@ -249,11 +246,19 @@ export async function deployToken(params: {
       updateLogItem("send tiny", {
         status: txTinyResult.status === "pending" ? "success" : "error",
         title: "TinyContract transaction sent",
-        description: `TinyContract transaction sent with status ${txTinyResult.status}`,
+        description: `TinyContract transaction sent\n with status ${txTinyResult.status}\n and hash ${txTinyResult.hash}`,
         date: new Date(),
       });
       if (useHardcodedWallet) nonce++;
     }
+
+    logItem({
+      id: "transaction",
+      status: "waiting",
+      title: "Preparing deploy transaction",
+      description: "Preparing the transaction for deployment...",
+      date: new Date(),
+    });
 
     const adminContractVerificationKey = verificationKeys[chain]?.admin;
     const tokenContractVerificationKey = verificationKeys[chain]?.token;
