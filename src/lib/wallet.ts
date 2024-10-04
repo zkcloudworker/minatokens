@@ -1,5 +1,5 @@
 "use client";
-
+import { shortenString } from "./short";
 const DEBUG = process.env.NEXT_PUBLIC_DEBUG === "true";
 const chain = process.env.NEXT_PUBLIC_CHAIN_ID;
 
@@ -187,7 +187,7 @@ export async function getWalletInfo(): Promise<{
   }
 
   return {
-    address,
+    address: address ? shortenString(address) : undefined,
     network,
     isAuro: (window as any).mina?.isAuro === true,
   };

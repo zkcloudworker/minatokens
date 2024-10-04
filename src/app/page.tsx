@@ -488,7 +488,9 @@ export default function LaunchToken() {
         logItem({
           id,
           status: "waiting",
-          title: `Minting ${item.amount} ${tokenSymbol} to ${item.to}`,
+          title: `Minting ${item.amount} ${tokenSymbol} to ${shortenString(
+            item.to
+          )}`,
           description: `Building transaction...`,
           date: new Date(),
         });
