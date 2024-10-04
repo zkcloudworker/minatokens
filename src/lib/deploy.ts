@@ -4,7 +4,6 @@ import { getAccountNonce } from "./nonce";
 import { TimelineItem } from "../components/ui/timeline";
 import React from "react";
 import { verificationKeys } from "./vk";
-
 const DEBUG = process.env.NEXT_PUBLIC_DEBUG === "true";
 const chain = process.env.NEXT_PUBLIC_CHAIN;
 const WALLET = process.env.NEXT_PUBLIC_WALLET;
@@ -81,6 +80,7 @@ export async function deployToken(params: {
         accountBalanceMina,
         fee: getFee,
         fetchMinaAccount,
+        TinyContract,
       },
     } = lib;
 
@@ -228,6 +228,27 @@ export async function deployToken(params: {
       )} sec ${(Date.now() - txTimeStart) % 1000} ms`,
       date: new Date(),
     });
+
+    logItem({
+      id: "compile tiny",
+      status: "waiting",
+      title: "Compiling TinyContract",
+      description: "Compiling TinyContract...",
+      date: new Date(),
+    });
+    console.time("compile tiny");
+    const compileTimeTiny = Date.now();
+    await TinyContract.compile();
+    console.timeEnd("compile tiny");
+    updateLogItem("compile tiny", {
+      status: "success",
+      title: "TinyContract compiled",
+      description: `TinyContract compiled in ${Math.floor(
+        (Date.now() - compileTimeTiny) / 1000
+      )} sec ${(Date.now() - compileTimeTiny) % 1000} ms`,
+      date: new Date(),
+    });
+
     logItem({
       id: "compile admin",
       status: "waiting",
@@ -274,6 +295,7 @@ export async function deployToken(params: {
       description: "Proving transaction...",
       date: new Date(),
     });
+    await sleep(5000);
     const proveTime = Date.now();
     console.time("proved");
     await tx.prove();
@@ -286,6 +308,7 @@ export async function deployToken(params: {
       )} sec ${(Date.now() - proveTime) % 1000} ms`,
       date: new Date(),
     });
+    await sleep(5000);
     console.time("sent transaction");
     logItem({
       id: "send transaction",
@@ -348,4 +371,8 @@ export async function deployToken(params: {
       error: String(error) ?? "Error while deploying token",
     };
   }
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
