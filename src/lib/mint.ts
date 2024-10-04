@@ -1,12 +1,10 @@
 "use client";
 
-import { sendMintTransaction } from "./zkcloudworker";
 import { TimelineItem } from "../components/ui/timeline";
 
 const DEBUG = process.env.NEXT_PUBLIC_DEBUG === "true";
 const chain = process.env.NEXT_PUBLIC_CHAIN;
 const WALLET = process.env.NEXT_PUBLIC_WALLET;
-const AURO_TEST = process.env.NEXT_PUBLIC_AURO_TEST === "true";
 const MINT_FEE = 1e8;
 const ISSUE_FEE = 1e9;
 
@@ -24,10 +22,12 @@ export async function mintToken(params: {
   updateLogItem: (id: string, update: Partial<TimelineItem>) => void;
   nonce: number;
   id: string;
+  useHardcodedWallet: boolean;
+  sequence: number;
 }): Promise<{
   success: boolean;
   error?: string;
-  jobId?: string;
+  hash?: string;
 }> {
   if (chain === undefined) throw new Error("NEXT_PUBLIC_CHAIN is undefined");
   if (chain !== "devnet" && chain !== "mainnet")
@@ -43,10 +43,12 @@ export async function mintToken(params: {
     updateLogItem,
     nonce,
     id,
+    useHardcodedWallet,
+    sequence,
   } = params;
   try {
     const mina = (window as any).mina;
-    if (mina === undefined || mina?.isAuro !== true) {
+    if ((mina === undefined || mina?.isAuro !== true) && !useHardcodedWallet) {
       console.error("No Auro Wallet found", mina);
       updateLogItem(id, {
         status: "error",
@@ -86,7 +88,7 @@ export async function mintToken(params: {
     );
 
     let adminPrivateKey = PrivateKey.empty();
-    if (AURO_TEST) {
+    if (useHardcodedWallet) {
       if (process.env.NEXT_PUBLIC_ADMIN_SK === undefined) {
         throw new Error("NEXT_PUBLIC_ADMIN_SK is undefined");
       }
@@ -96,13 +98,9 @@ export async function mintToken(params: {
         throw new Error("NEXT_PUBLIC_ADMIN_PK is invalid");
       }
     }
-    const sender = AURO_TEST
+    const sender = useHardcodedWallet
       ? adminPrivateKey.toPublicKey()
       : PublicKey.fromBase58(adminPublicKey);
-
-    if (DEBUG) console.log("initializing blockchain", chain);
-    const net = await initBlockchain(chain);
-    if (DEBUG) console.log("blockchain initialized", net);
 
     if (DEBUG) console.log("network id", Mina.getNetworkId());
 
@@ -125,51 +123,47 @@ export async function mintToken(params: {
         ? `mint ${symbol}`.substring(0, 30)
         : `mint ${Number(amount.toBigInt()) / 1_000_000_000} ${symbol}`;
 
-    await fetchMinaAccount({
-      publicKey: sender,
-      force: true,
-    });
-    await fetchMinaAccount({
-      publicKey: contractAddress,
-      force: true,
-    });
-    await fetchMinaAccount({
-      publicKey: adminContractPublicKey,
-      force: true,
-    });
-    await fetchMinaAccount({
-      publicKey: contractAddress,
-      tokenId,
-      force: true,
-    });
-    await fetchMinaAccount({
-      publicKey: to,
-      tokenId,
-      force: true,
-    });
-    await fetchMinaAccount({
-      publicKey: wallet,
-      force: true,
-    });
-
-    if (!Mina.hasAccount(sender)) {
-      console.error("Sender does not have account");
-
-      updateLogItem(id, {
-        status: "error",
-        description: `Account ${sender.toBase58()} not found. Please fund your account or try again later, after all the previous transactions are included in the block.`,
-        date: new Date(),
+    if (sequence === 0) {
+      await fetchMinaAccount({
+        publicKey: sender,
+        force: true,
+      });
+      await fetchMinaAccount({
+        publicKey: contractAddress,
+        force: true,
+      });
+      await fetchMinaAccount({
+        publicKey: adminContractPublicKey,
+        force: true,
+      });
+      await fetchMinaAccount({
+        publicKey: contractAddress,
+        tokenId,
+        force: true,
+      });
+      await fetchMinaAccount({
+        publicKey: to,
+        tokenId,
+        force: true,
       });
 
-      return {
-        success: false,
-        error: "Sender does not have account",
-      };
+      if (!Mina.hasAccount(sender)) {
+        console.error("Sender does not have account");
+
+        updateLogItem(id, {
+          status: "error",
+          description: `Account ${sender.toBase58()} not found. Please fund your account or try again later, after all the previous transactions are included in the block.`,
+          date: new Date(),
+        });
+
+        return {
+          success: false,
+          error: "Sender does not have account",
+        };
+      }
     }
     const isNewAccount = Mina.hasAccount(to, tokenId) === false;
-    const requiredBalance = isNewAccount
-      ? 1
-      : 0 + (MINT_FEE + fee) / 1_000_000_000;
+    const requiredBalance = isNewAccount ? 1 : 0 + fee / 1_000_000_000;
     if (requiredBalance > balance) {
       updateLogItem(id, {
         status: "error",
@@ -189,93 +183,68 @@ export async function mintToken(params: {
       { sender, fee, memo, nonce },
       async () => {
         if (isNewAccount) AccountUpdate.fundNewAccount(sender, 1);
-        const provingFee = AccountUpdate.createSigned(sender);
-        provingFee.send({
-          to: PublicKey.fromBase58(WALLET),
-          amount: UInt64.from(MINT_FEE),
-        });
         await zkToken.mint(to, amount);
       }
     );
-    if (AURO_TEST) tx.sign([adminPrivateKey]);
+    if (useHardcodedWallet) tx.sign([adminPrivateKey]);
 
-    const serializedTransaction = serializeTransaction(tx);
+    console.timeEnd("prepared tx");
+    console.timeEnd("ready to sign");
+    updateLogItem(id, {
+      status: "waiting",
+      description: "Proving transaction...",
+      date: new Date(),
+    });
+    const proveTime = Date.now();
+    console.time("proved");
+    await tx.prove();
+    console.timeEnd("proved");
+    updateLogItem(id, {
+      status: "waiting",
+      description: `Transaction proven in ${Math.floor(
+        (Date.now() - proveTime) / 1000
+      )} sec ${(Date.now() - proveTime) % 1000} ms.\n${
+        useHardcodedWallet
+          ? "Sending transaction..."
+          : `Please sign transaction setting nonce ${nonce}\n in Auro Wallet advanced settings`
+      }`,
+      date: new Date(),
+    });
     const transaction = tx.toJSON();
-    const txJSON = JSON.parse(transaction);
-    if (DEBUG) console.log("Transaction", tx.toPretty());
     const payload = {
       transaction,
-      onlySign: true,
       feePayer: {
         fee: fee,
         memo: memo,
         nonce,
       },
     };
-    console.timeEnd("prepared tx");
-    console.timeEnd("ready to sign");
-    await sleep(1000);
-    updateLogItem(id, {
-      description: `Mint transaction is prepared, please sign it setting nonce ${nonce} in Auro Wallet advanced settings`,
-      date: new Date(),
-    });
-    console.time("sent transaction");
-    if (DEBUG) console.log("txJSON", txJSON);
-    let signedData = JSON.stringify({ zkappCommand: txJSON });
 
-    if (!AURO_TEST) {
+    let hash: string | undefined = undefined;
+
+    if (!useHardcodedWallet) {
       const txResult = await mina?.sendTransaction(payload);
       if (DEBUG) console.log("Transaction result", txResult);
-      signedData = txResult?.signedData;
-      if (signedData === undefined) {
-        if (DEBUG) console.log("No signed data");
-        updateLogItem(id, {
-          status: "error",
-          description: "No user signature received, mint transaction cancelled",
-          date: new Date(),
-        });
-        return {
-          success: false,
-          error: "No user signature",
-        };
-      }
-    }
-
-    updateLogItem(id, {
-      description: "User signature received, starting cloud proving job",
-      date: new Date(),
-    });
-    const jobId = await sendMintTransaction({
-      serializedTransaction,
-      signedData,
-      adminContractPublicKey: adminContractPublicKey.toBase58(),
-      tokenPublicKey: contractAddress.toBase58(),
-      adminPublicKey: sender.toBase58(),
-      to: to.toBase58(),
-      amount: Number(amount.toBigInt()),
-      chain,
-      symbol,
-      sendTransaction: false,
-    });
-    console.timeEnd("sent transaction");
-    if (DEBUG) console.log("Sent transaction, jobId", jobId);
-    if (jobId === undefined) {
-      console.error("JobId is undefined");
+      hash = txResult?.hash;
       updateLogItem(id, {
-        status: "error",
-        description:
-          "Cloud proving job was failed to start, mint transaction is cancelled",
+        status: hash ? "waiting" : "error",
+        description: `Mint transaction sent with status ${txResult?.status}`,
         date: new Date(),
       });
-      return {
-        success: false,
-        error: "JobId is undefined",
-      };
+    } else {
+      const txSent = await tx.send();
+      hash = txSent.hash;
+      const status = txSent.status;
+      updateLogItem(id, {
+        status: status === "pending" ? "waiting" : "error",
+        description: `Mint transaction sent with status ${status}`,
+        date: new Date(),
+      });
     }
 
     return {
       success: true,
-      jobId,
+      hash,
     };
   } catch (error) {
     console.error("Error in mintToken", error);

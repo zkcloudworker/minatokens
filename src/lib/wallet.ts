@@ -152,6 +152,7 @@ export async function connectWallet(
 export async function getWalletInfo(): Promise<{
   address: string | undefined;
   network: string | undefined;
+  isAuro: boolean | undefined;
 }> {
   let address: string | undefined;
   let network: string | undefined;
@@ -162,6 +163,7 @@ export async function getWalletInfo(): Promise<{
       return {
         address: undefined,
         network: undefined,
+        isAuro: undefined,
       };
     }
 
@@ -187,5 +189,6 @@ export async function getWalletInfo(): Promise<{
   return {
     address,
     network,
+    isAuro: (window as any).mina?.isAuro === true,
   };
 }

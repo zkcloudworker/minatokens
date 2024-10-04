@@ -1,6 +1,5 @@
 "use client";
 
-import { sendDeployTransaction } from "./zkcloudworker";
 import { getAccountNonce } from "./nonce";
 import { TimelineItem } from "../components/ui/timeline";
 import React from "react";
@@ -9,7 +8,6 @@ import { verificationKeys } from "./vk";
 const DEBUG = process.env.NEXT_PUBLIC_DEBUG === "true";
 const chain = process.env.NEXT_PUBLIC_CHAIN;
 const WALLET = process.env.NEXT_PUBLIC_WALLET;
-const AURO_TEST = process.env.NEXT_PUBLIC_AURO_TEST === "true";
 const MINT_FEE = 1e8;
 const ISSUE_FEE = 1e9;
 
@@ -18,17 +16,17 @@ export async function deployToken(params: {
   adminContractPrivateKey: string;
   adminPublicKey: string;
   symbol: string;
-  uri: string;
-  libraries: Promise<{
+  lib: {
     o1js: typeof import("o1js");
     zkcloudworker: typeof import("zkcloudworker");
-  }>;
+  };
   logItem: (item: TimelineItem) => void;
   updateLogItem: (id: string, update: Partial<TimelineItem>) => void;
+  useHardcodedWallet: boolean;
 }): Promise<{
   success: boolean;
   error?: string;
-  jobId?: string;
+  hash?: string;
 }> {
   if (chain === undefined) throw new Error("NEXT_PUBLIC_CHAIN is undefined");
   if (chain !== "devnet" && chain !== "mainnet")
@@ -40,15 +38,16 @@ export async function deployToken(params: {
     tokenPrivateKey,
     adminPublicKey,
     symbol,
-    uri,
-    libraries,
+    lib,
     logItem,
     updateLogItem,
+    useHardcodedWallet,
   } = params;
+  const uri = "mobile test";
 
   try {
     const mina = (window as any).mina;
-    if (mina === undefined || mina?.isAuro !== true) {
+    if ((mina === undefined || mina?.isAuro !== true) && !useHardcodedWallet) {
       console.error("No Auro Wallet found", mina);
       logItem({
         id: "no-mina",
@@ -62,28 +61,6 @@ export async function deployToken(params: {
         error: "No Auro Wallet found",
       };
     }
-
-    logItem({
-      id: "o1js-loading",
-      status: "waiting",
-      title: "Loading o1js library",
-      description: React.createElement(
-        "span",
-        null,
-        "Loading ",
-        React.createElement(
-          "a",
-          {
-            href: "https://docs.minaprotocol.com/zkapps/o1js",
-            target: "_blank",
-            rel: "noopener noreferrer",
-          },
-          "o1js"
-        ),
-        " library..."
-      ),
-      date: new Date(),
-    });
 
     const {
       o1js: {
@@ -105,10 +82,10 @@ export async function deployToken(params: {
         fee: getFee,
         fetchMinaAccount,
       },
-    } = await libraries;
+    } = lib;
 
     let adminPrivateKey = PrivateKey.empty();
-    if (AURO_TEST) {
+    if (useHardcodedWallet) {
       if (process.env.NEXT_PUBLIC_ADMIN_SK === undefined) {
         throw new Error("NEXT_PUBLIC_ADMIN_SK is undefined");
       }
@@ -118,30 +95,9 @@ export async function deployToken(params: {
         throw new Error("NEXT_PUBLIC_ADMIN_PK is invalid");
       }
     }
-    const sender = AURO_TEST
+    const sender = useHardcodedWallet
       ? adminPrivateKey.toPublicKey()
       : PublicKey.fromBase58(adminPublicKey);
-
-    updateLogItem("o1js-loading", {
-      status: "success",
-      title: "Loaded o1js library",
-      description: React.createElement(
-        "span",
-        null,
-        "Loaded ",
-        React.createElement(
-          "a",
-          {
-            href: "https://docs.minaprotocol.com/zkapps/o1js",
-            target: "_blank",
-            rel: "noopener noreferrer",
-          },
-          "o1js"
-        ),
-        " library"
-      ),
-      date: new Date(),
-    });
 
     logItem({
       id: "transaction",
@@ -150,6 +106,7 @@ export async function deployToken(params: {
       description: "Preparing the transaction for deployment...",
       date: new Date(),
     });
+    const txTimeStart = Date.now();
 
     if (DEBUG) console.log("initializing blockchain", chain);
     const net = await initBlockchain(chain);
@@ -181,10 +138,6 @@ export async function deployToken(params: {
       publicKey: sender,
       force: true,
     });
-    await fetchMinaAccount({
-      publicKey: wallet,
-      force: true,
-    });
 
     if (!Mina.hasAccount(sender)) {
       console.error("Sender does not have account");
@@ -202,7 +155,7 @@ export async function deployToken(params: {
         error: "Sender does not have account",
       };
     }
-    const requiredBalance = 3 + (ISSUE_FEE + fee) / 1_000_000_000;
+    const requiredBalance = 3 + fee / 1_000_000_000;
     if (requiredBalance > balance) {
       logItem({
         id: "insufficient-balance",
@@ -242,11 +195,6 @@ export async function deployToken(params: {
       { sender, fee, memo, nonce },
       async () => {
         AccountUpdate.fundNewAccount(sender, 3);
-        const provingFee = AccountUpdate.createSigned(sender);
-        provingFee.send({
-          to: PublicKey.fromBase58(WALLET),
-          amount: UInt64.from(ISSUE_FEE),
-        });
         await zkAdmin.deploy({ adminPublicKey: sender });
         zkAdmin.account.zkappUri.set(uri);
         await zkToken.deploy({
@@ -265,99 +213,126 @@ export async function deployToken(params: {
       }
     );
     tx.sign(
-      AURO_TEST
+      useHardcodedWallet
         ? [contractPrivateKey, adminContractPrivateKey, adminPrivateKey]
         : [contractPrivateKey, adminContractPrivateKey]
     );
 
-    const serializedTransaction = serializeTransaction(tx);
+    console.timeEnd("prepared tx");
+    console.timeEnd("ready to sign");
+    updateLogItem("transaction", {
+      status: "success",
+      title: "Deploy transaction is prepared",
+      description: `Deploy transaction is prepared in ${Math.floor(
+        (Date.now() - txTimeStart) / 1000
+      )} sec ${(Date.now() - txTimeStart) % 1000} ms`,
+      date: new Date(),
+    });
+    logItem({
+      id: "compile admin",
+      status: "waiting",
+      title: "Compiling FungibleTokenAdmin contract",
+      description: "Compiling FungibleTokenAdmin contract...",
+      date: new Date(),
+    });
+    console.time("compile admin");
+    const compileTimeAdmin = Date.now();
+    await FungibleTokenAdmin.compile();
+    console.timeEnd("compile admin");
+    updateLogItem("compile admin", {
+      status: "success",
+      title: "FungibleTokenAdmin contract compiled",
+      description: `FungibleTokenAdmin contract compiled in ${Math.floor(
+        (Date.now() - compileTimeAdmin) / 1000
+      )} sec ${(Date.now() - compileTimeAdmin) % 1000} ms`,
+      date: new Date(),
+    });
+    logItem({
+      id: "compile contract",
+      status: "waiting",
+      title: "Compiling FungibleToken contract",
+      description: "Compiling FungibleToken contract...",
+      date: new Date(),
+    });
+    console.time("compile contract");
+    const compileTimeToken = Date.now();
+    await FungibleToken.compile();
+    console.timeEnd("compile contract");
+    updateLogItem("compile contract", {
+      status: "success",
+      title: "FungibleToken contract compiled",
+      description: `FungibleToken contract compiled in ${Math.floor(
+        (Date.now() - compileTimeToken) / 1000
+      )} sec ${(Date.now() - compileTimeToken) % 1000} ms`,
+      date: new Date(),
+    });
+
+    logItem({
+      id: "prove",
+      status: "waiting",
+      title: "Proving transaction",
+      description: "Proving transaction...",
+      date: new Date(),
+    });
+    const proveTime = Date.now();
+    console.time("proved");
+    await tx.prove();
+    console.timeEnd("proved");
+    updateLogItem("prove", {
+      status: "success",
+      title: "Transaction proven",
+      description: `Transaction proven in ${Math.floor(
+        (Date.now() - proveTime) / 1000
+      )} sec ${(Date.now() - proveTime) % 1000} ms`,
+      date: new Date(),
+    });
+    console.time("sent transaction");
+    logItem({
+      id: "send transaction",
+      status: "waiting",
+      title: useHardcodedWallet
+        ? "Sending transaction"
+        : "Please sign transaction",
+      description: useHardcodedWallet
+        ? "Sending transaction..."
+        : "Please sign transaction",
+      date: new Date(),
+    });
     const transaction = tx.toJSON();
-    const txJSON = JSON.parse(transaction);
-    if (DEBUG) console.log("Transaction", tx.toPretty());
     const payload = {
       transaction,
-      onlySign: true,
       feePayer: {
         fee: fee,
         memo: memo,
       },
     };
-    console.timeEnd("prepared tx");
-    console.timeEnd("ready to sign");
-    updateLogItem("transaction", {
-      status: "waiting",
-      title: "Deploy transaction is prepared",
-      description: "Deploy transaction is prepared, please sign it",
-      date: new Date(),
-    });
-    console.time("sent transaction");
-    if (DEBUG) console.log("txJSON", txJSON);
-    let signedData = JSON.stringify({ zkappCommand: txJSON });
 
-    if (!AURO_TEST) {
+    let hash = undefined;
+    if (!useHardcodedWallet) {
       const txResult = await mina?.sendTransaction(payload);
       if (DEBUG) console.log("Transaction result", txResult);
-      signedData = txResult?.signedData;
-      if (signedData === undefined) {
-        if (DEBUG) console.log("No signed data");
-        updateLogItem("transaction", {
-          status: "error",
-          title: "No user signature received",
-          description:
-            "No user signature received, deploy transaction cancelled",
-          date: new Date(),
-        });
-        return {
-          success: false,
-          error: "No user signature",
-        };
-      }
-    }
-
-    updateLogItem("transaction", {
-      status: "success",
-      title: "User signature received",
-      description: "User signature received, proceeding with deployment",
-      date: new Date(),
-    });
-    logItem({
-      id: "cloud-proving-job",
-      status: "waiting",
-      title: "Starting cloud proving job",
-      description: "Starting cloud proving job...",
-      date: new Date(),
-    });
-    const jobId = await sendDeployTransaction({
-      serializedTransaction,
-      signedData,
-      adminContractPublicKey: adminContractPublicKey.toBase58(),
-      tokenPublicKey: contractAddress.toBase58(),
-      adminPublicKey: sender.toBase58(),
-      chain,
-      symbol,
-      uri,
-      sendTransaction: false,
-    });
-    console.timeEnd("sent transaction");
-    if (DEBUG) console.log("Sent transaction, jobId", jobId);
-    if (jobId === undefined) {
-      console.error("JobId is undefined");
-      updateLogItem("cloud-proving-job", {
-        status: "error",
-        title: "Cloud proving job was failed to start",
-        description:
-          "Cloud proving job was failed to start, transaction is cancelled",
+      hash = txResult?.hash;
+      updateLogItem("send transaction", {
+        status: hash ? "success" : "error",
+        title: hash ? "Deploy transaction sent" : "Failed to send transaction",
+        description: hash ? "Transaction sent" : "Failed to send transaction",
         date: new Date(),
       });
-      return {
-        success: false,
-        error: "JobId is undefined",
-      };
+    } else {
+      const txSent = await tx.send();
+      hash = txSent.hash;
+      const status = txSent.status;
+      updateLogItem("send transaction", {
+        status: status === "pending" ? "success" : "error",
+        title: "Deploy transaction sent",
+        description: `Transaction sent with status ${status}`,
+        date: new Date(),
+      });
     }
 
     return {
       success: true,
-      jobId,
+      hash,
     };
   } catch (error) {
     console.error("Error in deployToken", error);

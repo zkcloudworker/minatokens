@@ -1,6 +1,5 @@
 "use client";
 
-import { sendTransferTransaction } from "./zkcloudworker";
 import { TimelineItem } from "../components/ui/timeline";
 
 const DEBUG = process.env.NEXT_PUBLIC_DEBUG === "true";
@@ -225,17 +224,7 @@ export async function transferToken(params: {
       description: "User signature received, starting cloud proving job",
       date: new Date(),
     });
-    const jobId = await sendTransferTransaction({
-      serializedTransaction,
-      signedData,
-      tokenPublicKey: contractAddress.toBase58(),
-      from: sender.toBase58(),
-      to: to.toBase58(),
-      amount: Number(amount.toBigInt()),
-      chain,
-      symbol,
-      sendTransaction: false,
-    });
+    const jobId = undefined;
     console.timeEnd("sent transaction");
     if (DEBUG) console.log("Sent transaction, jobId", jobId);
     if (jobId === undefined) {

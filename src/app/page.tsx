@@ -12,22 +12,14 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Code, Zap, DollarSign } from "lucide-react";
-import {
-  arweaveTxStatus,
-  pinImageToArweave,
-  pinStringToArweave,
-  arweaveHashToUrl,
-} from "@/lib/arweave";
 import { deployTokenParams } from "@/lib/keys";
 import { deployToken } from "@/lib/deploy";
 import { mintToken } from "@/lib/mint";
-import { getResult } from "@/lib/zkcloudworker";
 import {
   Timeline,
   TimelineItem,
   updateTimelineItem,
 } from "@/components/ui/timeline";
-import { useDropzone } from "react-dropzone";
 import { getTxStatusFast } from "@/lib/txstatus-fast";
 import { connectWallet, getWalletInfo } from "@/lib/wallet";
 import { getSystemInfo } from "@/lib/system-info";
@@ -38,21 +30,22 @@ import { getAccountNonce } from "@/lib/nonce";
 import { checkMintData, Mint, MintVerified } from "@/lib/address";
 
 const DEBUG = process.env.NEXT_PUBLIC_DEBUG === "true";
-const AURO_TEST = process.env.NEXT_PUBLIC_AURO_TEST === "true";
 const ADMIN_ADDRESS = process.env.NEXT_PUBLIC_ADMIN_PK;
 let minted = 0;
 
 export default function LaunchToken() {
-  const [image, setImage] = useState<File | undefined>(undefined);
-  const [url, setUrl] = useState<string | undefined>(undefined);
-  const [tokenName, setTokenName] = useState<string>("");
-  const [tokenSymbol, setTokenSymbol] = useState<string>("");
-  const [tokenDescription, setTokenDescription] = useState<string>("");
-  const [website, setWebsite] = useState<string>("");
-  const [telegram, setTelegram] = useState<string>("");
-  const [twitter, setTwitter] = useState<string>("");
-  const [discord, setDiscord] = useState<string>("");
-  const [mint, setMint] = useState<Mint[]>([{ amount: "", to: "" }]);
+  const [tokenSymbol, setTokenSymbol] = useState<string>("TEST");
+  const [useHardcodedWallet, setUseHardcodedWallet] = useState<boolean>(false);
+  const [mint, setMint] = useState<Mint[]>([
+    {
+      amount: "1000",
+      to: "B62qobAYQBkpC8wVnRzydrtCgWdkYTqsfXTcaLdGq1imtqtKgAHN29K",
+    },
+    {
+      amount: "2000",
+      to: "B62qiq7iTTP7Z2KEpQ9eF9UVGLiEKAjBpz1yxyd2MwMrxVwpAMLta2h",
+    },
+  ]);
   const [issuing, setIssuing] = useState<boolean>(false);
   const [issued, setIssued] = useState<boolean>(false);
   const [timelineItems, setTimeLineItems] = useState<TimelineItem[]>([]);
@@ -69,19 +62,6 @@ export default function LaunchToken() {
   >(undefined);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const onDrop = (acceptedFiles: File[]) => {
-    if (DEBUG) console.log("acceptedFiles", acceptedFiles);
-    if (acceptedFiles.length > 0) {
-      setImage(acceptedFiles[0]);
-      setUrl(URL.createObjectURL(acceptedFiles[0]));
-    }
-  };
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    multiple: false,
-    accept: { "image/*": [".svg", ".jpg", ".jpeg", ".png", ".gif", ".webp"] },
-  });
-
   function logItem(item: TimelineItem) {
     setTimeLineItems((items) => [...items, item]);
   }
@@ -90,120 +70,69 @@ export default function LaunchToken() {
     setTimeLineItems((items) => updateTimelineItem({ items, id, update }));
   }
 
-  async function waitForArweaveTx(params: {
-    hash: string;
-    id: string;
-    type: "image" | "metadata";
-    waitingTitle: string;
-    successTitle: string;
-    failedTitle: string;
-  }): Promise<string | undefined> {
-    const { hash, id, waitingTitle, successTitle, failedTitle, type } = params;
-    logItem({
-      id,
-      title: waitingTitle,
-      description: (
-        <>
-          It can take a few minutes for the transaction with hash{" "}
-          <a
-            href={`https://arscan.io/tx/${hash}`}
-            className="text-blue-500 hover:underline"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {hash}
-          </a>{" "}
-          to be mined.
-        </>
-      ),
-      date: new Date(),
-      status: "waiting",
-    });
-    let status = await arweaveTxStatus(hash);
-    while (status.success && !status.data?.confirmed && !isError) {
-      if (DEBUG)
-        console.log(
-          "Waiting for Arweave transaction to be mined...",
-          status?.data?.confirmed,
-          status
-        );
-      await sleep(5000);
-      status = await arweaveTxStatus(hash);
-    }
-    if (DEBUG) console.log("Arweave transaction mined", status);
-    if (
-      !status.success ||
-      !status.data?.confirmed ||
-      !status.data?.confirmed?.number_of_confirmations ||
-      Number(status.data?.confirmed?.number_of_confirmations) < 1 ||
-      isError
-    ) {
-      updateLogItem(id, {
-        status: "error",
-        title: failedTitle,
-        description: isError ? "Cancelled" : "Failed to pin data to Arweave",
-        date: new Date(),
-      });
-      setWaitingItem(undefined);
-      setIsError(true);
-      setIssuing(false);
-      return;
-    }
-    updateLogItem(id, {
-      status: "success",
-      title: successTitle,
-      // TODO: continue to monitor the number of confirmations
-      description: (
-        <>
-          Successfully mined the arweave transaction with{" "}
-          {status.data?.confirmed?.number_of_confirmations} confirmations. View
-          the permanently stored {type} at{" "}
-          <a
-            href={status.url}
-            className="text-blue-500 hover:underline"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {status.url}
-          </a>
-          .
-        </>
-      ),
-      date: new Date(),
-    });
-    if (DEBUG) console.log("Arweave URL for", type, status.url);
-    return status.url;
-  }
-
   async function waitForMinaTx(params: {
     hash: string;
     id: string;
-    waitingTitle: string;
-    successTitle: string;
-    failedTitle: string;
+    waitingTitle?: string;
+    successTitle?: string;
+    failedTitle?: string;
     type: "deploy" | "mint";
   }): Promise<void> {
     const { hash, id, waitingTitle, successTitle, failedTitle, type } = params;
-    logItem({
-      id,
-      title: waitingTitle,
-      description: (
-        <>
-          It can take a few minutes for the transaction with hash{" "}
-          <a
-            href={`https://minascan.io/devnet/tx/${hash}?type=zk-tx`}
-            className="text-blue-500 hover:underline"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {hash}
-          </a>{" "}
-          to be included into the block.
-        </>
-      ),
-      date: new Date(),
-      status: "waiting",
-    });
+    if (
+      type === "deploy" &&
+      (waitingTitle === undefined ||
+        successTitle === undefined ||
+        failedTitle === undefined)
+    ) {
+      throw new Error(
+        "waitingTitle, successTitle and failedTitle must be provided for deploy type"
+      );
+    }
+    if (type === "deploy" && waitingTitle !== undefined) {
+      logItem({
+        id,
+        title: waitingTitle,
+        description: (
+          <>
+            It can take a few minutes for the transaction with hash{" "}
+            <a
+              href={`https://minascan.io/devnet/tx/${hash}?type=zk-tx`}
+              className="text-blue-500 hover:underline"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {hash}
+            </a>
+            <br />
+            to be included into the block.
+          </>
+        ),
+        date: new Date(),
+        status: "waiting",
+      });
+    } else {
+      updateLogItem(id, {
+        status: "waiting",
+        description: (
+          <>
+            It can take a few minutes for the transaction with hash{" "}
+            <a
+              href={`https://minascan.io/devnet/tx/${hash}?type=zk-tx`}
+              className="text-blue-500 hover:underline"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {hash}
+            </a>
+            <br />
+            to be included into the block.
+          </>
+        ),
+        date: new Date(),
+      });
+    }
+
     let ok = await getTxStatusFast({ hash });
     let count = 0;
     if (DEBUG)
@@ -211,7 +140,7 @@ export default function LaunchToken() {
     while (!ok && !isError && count < 100) {
       if (DEBUG)
         console.log("Waiting for Mina transaction to be mined...", ok, hash);
-      await sleep(10000);
+      await sleep(20000);
       ok = await getTxStatusFast({ hash });
       count++;
     }
@@ -219,7 +148,7 @@ export default function LaunchToken() {
     if (!ok || isError) {
       updateLogItem(id, {
         status: "error",
-        title: failedTitle,
+        title: type === "deploy" ? failedTitle : undefined,
         description: isError ? "Cancelled" : "Failed to deploy token contract",
         date: new Date(),
       });
@@ -227,25 +156,46 @@ export default function LaunchToken() {
       setIsError(true);
       return;
     }
-    updateLogItem(id, {
-      status: "success",
-      title: successTitle,
-      description: (
-        <>
-          Successfully deployed the token contract with transaction hash{" "}
-          <a
-            href={`https://minascan.io/devnet/tx/${hash}?type=zk-tx`}
-            className="text-blue-500 hover:underline"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {hash}
-          </a>
-          .
-        </>
-      ),
-      date: new Date(),
-    });
+    if (type === "deploy") {
+      updateLogItem(id, {
+        status: "success",
+        title: successTitle,
+        description: (
+          <>
+            Successfully deployed the token contract with transaction hash{" "}
+            <a
+              href={`https://minascan.io/devnet/tx/${hash}?type=zk-tx`}
+              className="text-blue-500 hover:underline"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {hash}
+            </a>
+            .
+          </>
+        ),
+        date: new Date(),
+      });
+    } else {
+      updateLogItem(id, {
+        status: "success",
+        description: (
+          <>
+            Successfully minted the token with transaction hash{" "}
+            <a
+              href={`https://minascan.io/devnet/tx/${hash}?type=zk-tx`}
+              className="text-blue-500 hover:underline"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {hash}
+            </a>
+            .
+          </>
+        ),
+        date: new Date(),
+      });
+    }
   }
 
   async function waitForContractVerification(params: {
@@ -306,278 +256,16 @@ export default function LaunchToken() {
     updateLogItem(id, {
       status: "success",
       title: successTitle,
-      description: "Token contract state is verified",
-      date: new Date(),
-    });
-  }
-
-  async function waitForProveJob(params: {
-    jobId: string;
-    id: string;
-    waitingTitle: string;
-    successTitle: string;
-    failedTitle: string;
-  }): Promise<string | undefined> {
-    const { jobId, id, waitingTitle, successTitle, failedTitle } = params;
-    updateLogItem(id, {
-      status: "waiting",
-      title: waitingTitle,
       description: (
         <>
-          It can take about a minute to prove the transaction with jobId{" "}
+          Contract state is verified for the token {tokenSymbol} with address{" "}
           <a
-            href={`https://zkcloudworker.com/job/${jobId}`}
+            href={`https://minascan.io/devnet/account/${tokenContractAddress}/txs?type=zk-acc`}
             className="text-blue-500 hover:underline"
             target="_blank"
             rel="noopener noreferrer"
           >
-            {jobId}
-          </a>
-          .
-        </>
-      ),
-      date: new Date(),
-    });
-    await sleep(10000);
-    let result = await getResult(jobId);
-    while (!result) {
-      await sleep(10000); // TODO: use setInterval
-      result = await getResult(jobId);
-    }
-
-    if (!result || result.toLowerCase().startsWith("error") || isError) {
-      updateLogItem(id, {
-        status: "error",
-        title: failedTitle,
-        description: isError ? "Cancelled" : "Failed to prove transaction",
-        date: new Date(),
-      });
-      setWaitingItem(undefined);
-      setIsError(true);
-      return undefined;
-    }
-    let transaction: string | undefined = undefined;
-    try {
-      const { success, tx } = JSON.parse(result);
-      transaction = success === true ? tx : undefined;
-    } catch (error) {
-      console.error("waitForProveJob catch while parsing result", error);
-    }
-    if (transaction === undefined) {
-      updateLogItem(id, {
-        status: "error",
-        title: failedTitle,
-        description: "Failed to prove and send transaction",
-        date: new Date(),
-      });
-      setWaitingItem(undefined);
-      setIsError(true);
-      return undefined;
-    }
-    updateLogItem(id, {
-      status: "success",
-      title: successTitle,
-      description: (
-        <>
-          Successfully proved the transaction with jobId{" "}
-          <a
-            href={`https://zkcloudworker.com/job/${jobId}`}
-            className="text-blue-500 hover:underline"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {jobId}
-          </a>
-          .
-        </>
-      ),
-      date: new Date(),
-    });
-    return transaction;
-  }
-
-  async function waitForMintJob(params: {
-    jobId: string;
-    id: string;
-    sequence: number;
-  }): Promise<string | undefined> {
-    const { jobId, id, sequence } = params;
-    updateLogItem(id, {
-      description: (
-        <>
-          It can take about a minute to prove the transaction with jobId{" "}
-          <a
-            href={`https://zkcloudworker.com/job/${jobId}`}
-            className="text-blue-500 hover:underline"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {jobId}
-          </a>
-          .
-        </>
-      ),
-      date: new Date(),
-    });
-    await sleep(10000);
-    let result = await getResult(jobId);
-    while (!result) {
-      await sleep(10000); // TODO: use setInterval
-      result = await getResult(jobId);
-    }
-
-    if (!result || result.toLowerCase().startsWith("error") || isError) {
-      updateLogItem(id, {
-        status: "error",
-        description: isError ? "Cancelled" : "Failed to prove transaction",
-        date: new Date(),
-      });
-      setWaitingItem(undefined);
-      setIsError(true);
-      return undefined;
-    }
-    let transaction: string | undefined = undefined;
-    try {
-      const { success, tx } = JSON.parse(result);
-      transaction = success === true ? tx : undefined;
-    } catch (error) {
-      console.error("waitForProveJob catch while parsing result", error);
-    }
-    if (transaction === undefined) {
-      updateLogItem(id, {
-        status: "error",
-        description: "Failed to prove transaction",
-        date: new Date(),
-      });
-      setWaitingItem(undefined);
-      setIsError(true);
-      return undefined;
-    }
-    updateLogItem(id, {
-      description: (
-        <>
-          Successfully proved the transaction with jobId{" "}
-          <a
-            href={`https://zkcloudworker.com/job/${jobId}`}
-            className="text-blue-500 hover:underline"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {jobId}
-          </a>
-          , waiting for previous transactions to be sent...
-        </>
-      ),
-      date: new Date(),
-    });
-    while (sequence != minted && !isError) {
-      await sleep(1000);
-    }
-    if (isError) {
-      updateLogItem(id, {
-        status: "error",
-        description: "Cancelled",
-        date: new Date(),
-      });
-      return;
-    }
-    updateLogItem(id, {
-      description: (
-        <>
-          Successfully proved the transaction with jobId{" "}
-          <a
-            href={`https://zkcloudworker.com/job/${jobId}`}
-            className="text-blue-500 hover:underline"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {jobId}
-          </a>
-          , sending transaction to Mina blockchain...
-        </>
-      ),
-      date: new Date(),
-    });
-    const sendResult = await sendTransaction(transaction);
-    if (DEBUG) console.log("Transaction sent:", sendResult);
-    if (
-      isError ||
-      sendResult.success === false ||
-      sendResult.hash === undefined
-    ) {
-      updateLogItem(id, {
-        status: "error",
-        description: isError
-          ? "Cancelled"
-          : "Failed to send transaction to Mina blockchain",
-        date: new Date(),
-      });
-      setIsError(true);
-      return;
-    }
-    const hash = sendResult.hash;
-    minted++;
-    updateLogItem(id, {
-      description: (
-        <>
-          Successfully proved the transaction with jobId{" "}
-          <a
-            href={`https://zkcloudworker.com/job/${jobId}`}
-            className="text-blue-500 hover:underline"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {jobId}
-          </a>{" "}
-          and successfully sent the transaction to Mina blockchain with hash{" "}
-          <a
-            href={`https://minascan.io/devnet/tx/${hash}`}
-            className="text-blue-500 hover:underline"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {hash}
-          </a>
-          , waiting for it to be included in the block...
-        </>
-      ),
-      date: new Date(),
-    });
-
-    let ok = await getTxStatusFast({ hash });
-    let count = 0;
-    if (DEBUG)
-      console.log("Waiting for Mina transaction to be mined...", status, ok);
-    while (!ok && !isError && count < 100) {
-      if (DEBUG)
-        console.log("Waiting for Mina transaction to be mined...", ok, hash);
-      await sleep(10000);
-      ok = await getTxStatusFast({ hash });
-      count++;
-    }
-    if (DEBUG) console.log("Final tx status", { ok, count });
-    if (!ok || isError) {
-      updateLogItem(id, {
-        status: "error",
-        description: isError ? "Cancelled" : "Failed to mint tokens",
-        date: new Date(),
-      });
-      setWaitingItem(undefined);
-      setIsError(true);
-      return;
-    }
-    updateLogItem(id, {
-      status: "success",
-      description: (
-        <>
-          Successfully minted tokens with transaction hash{" "}
-          <a
-            href={`https://minascan.io/devnet/tx/${hash}?type=zk-tx`}
-            className="text-blue-500 hover:underline"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {hash}
+            {tokenContractAddress}
           </a>
           .
         </>
@@ -600,12 +288,10 @@ export default function LaunchToken() {
   }
 
   async function handleIssueToken() {
-    const walletInfo = await getWalletInfo();
-    if (DEBUG) console.log("Wallet Info:", walletInfo);
     const systemInfo = await getSystemInfo();
     if (DEBUG) console.log("System Info:", systemInfo);
     if (DEBUG) console.log("Navigator:", navigator);
-    if (AURO_TEST) {
+    if (useHardcodedWallet) {
       if (ADMIN_ADDRESS === undefined) {
         console.error("ADMIN_ADDRESS is not set");
         return;
@@ -617,6 +303,22 @@ export default function LaunchToken() {
     logWaitingItem({
       title: "Issuing token",
       description: "Checking data...",
+    });
+    logItem({
+      id: "system-info",
+      status: "success",
+      title: "System info",
+      description: `System info: ${JSON.stringify(systemInfo, null, 2)}`,
+      date: new Date(),
+    });
+    const walletInfo = await getWalletInfo();
+    if (DEBUG) console.log("Wallet Info:", walletInfo);
+    logItem({
+      id: "wallet-info",
+      status: "success",
+      title: "Wallet info",
+      description: `Wallet info: ${JSON.stringify(walletInfo, null, 2)}`,
+      date: new Date(),
     });
     const mintItems: MintVerified[] = [];
     if (DEBUG) console.log("Mint items:", mint);
@@ -652,83 +354,37 @@ export default function LaunchToken() {
     setIsError(false);
 
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-    console.log("Token Name:", tokenName);
     console.log("Token Symbol:", tokenSymbol);
-    console.log("Token Description:", tokenDescription);
-    console.log("Website:", website);
-    console.log("Telegram:", telegram);
-    console.log("Twitter:", twitter);
-    console.log("Discord:", discord);
 
-    //TODO: Pin token image to Arweave
-    // TODO: add issuer
     if (!libraries) setLibraries(loadLibraries());
+    let adminPublicKey = ADMIN_ADDRESS;
 
-    const json = {
-      symbol: tokenSymbol,
-      name: tokenName,
-      description: tokenDescription,
-      image: "", // TODO: imageUrl
-      website,
-      telegram,
-      twitter,
-      discord,
-      tokenContractCode:
-        "https://github.com/MinaFoundation/mina-fungible-token/blob/main/FungibleToken.ts",
-      adminContractsCode: [
-        "https://github.com/MinaFoundation/mina-fungible-token/blob/main/FungibleTokenAdmin.ts",
-      ],
-    };
-
-    const { address, network, error, success } = await connectWallet({});
-    console.log("Connected wallet", { address, network, error, success });
-    if (!success || !address) {
-      logItem({
-        id: "metadata",
-        status: "error",
-        title: "Failed to connect to wallet",
-        description: "Connect to wallet to continue",
-        date: new Date(),
-      });
-      setWaitingItem(undefined);
-      return;
+    if (!useHardcodedWallet) {
+      const { address, network, error, success } = await connectWallet({});
+      console.log("Connected wallet", { address, network, error, success });
+      if (!success || !address) {
+        logItem({
+          id: "metadata",
+          status: "error",
+          title: "Failed to connect to wallet",
+          description: "Connect to wallet to continue",
+          date: new Date(),
+        });
+        setWaitingItem(undefined);
+        return;
+      }
+      adminPublicKey = address;
     }
-    const adminPublicKey = AURO_TEST ? ADMIN_ADDRESS : address;
+
     if (!adminPublicKey) {
       console.error("adminPublicKey is not set");
       return;
     }
 
-    const metadataHash = await pinStringToArweave(
-      JSON.stringify(json, null, 2)
-    );
-
-    if (!metadataHash) {
-      logItem({
-        id: "metadata",
-        status: "error",
-        title: "Token metadata pinning failed",
-        description: "Failed to pin data to Arweave permanent storage",
-        date: new Date(),
-      });
-      setWaitingItem(undefined);
-      return;
-    }
-
-    const waitForArweaveTxPromise = waitForArweaveTx({
-      hash: metadataHash,
-      id: "metadata",
-      type: "metadata",
-      waitingTitle: "Pinning token metadata to Arweave permanent storage",
-      successTitle: "Token metadata is included into Arweave permanent storage",
-      failedTitle: "Failed to pin token metadata to Arweave permanent storage",
-    });
     setWaitingItem(undefined);
-
     const deployParamsPromise = deployTokenParams();
-    const uri = await arweaveHashToUrl(metadataHash);
 
-    if (isError || !uri) {
+    if (isError) {
       return;
     }
     const {
@@ -738,67 +394,21 @@ export default function LaunchToken() {
       adminContractPublicKey,
     } = await deployParamsPromise;
     if (DEBUG) console.log("Deploy Params received");
-
-    // Save the result to a JSON file
-    const deployParams = {
-      symbol: tokenSymbol,
-      name: tokenName,
-      description: tokenDescription,
-      image: "", // TODO: imageUrl
-      website,
-      telegram,
-      twitter,
-      discord,
-      tokenPrivateKey,
-      adminContractPrivateKey,
-      tokenPublicKey,
-      adminContractPublicKey,
-      adminPublicKey,
-      metadata: uri,
-    };
-    // TODO: save with password encryption
-    const deployParamsJson = JSON.stringify(deployParams, null, 2);
-    const blob = new Blob([deployParamsJson], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    const name = `${tokenSymbol}-${tokenPublicKey}.json`;
-    a.download = name;
-    a.click();
-    logItem({
-      id: "saveDeployParams",
-      status: "success",
-      title: "Token deploy parameters saved to a JSON file",
-      description: (
-        <>
-          <a
-            href={url}
-            download={name}
-            className="text-blue-500 hover:underline"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {name}
-          </a>{" "}
-          has been saved to your device.
-        </>
-      ),
-      date: new Date(),
-    });
+    const lib = await (libraries ?? loadLibraries());
     const deployResult = await deployToken({
       tokenPrivateKey,
       adminContractPrivateKey,
       adminPublicKey,
       symbol: tokenSymbol,
-      uri,
-      libraries: libraries ?? loadLibraries(),
+      lib,
       logItem,
       updateLogItem,
+      useHardcodedWallet,
     });
     if (DEBUG) console.log("Deploy result:", deployResult);
     if (
       deployResult.success === false ||
-      deployResult.jobId === undefined ||
+      deployResult.hash === undefined ||
       isError
     ) {
       updateLogItem("cloud-proving-job", {
@@ -810,45 +420,9 @@ export default function LaunchToken() {
       setWaitingItem(undefined);
       return;
     }
-    const deployJobId = deployResult.jobId;
-
-    const waitForProveJobPromise = waitForProveJob({
-      jobId: deployJobId,
-      id: "cloud-proving-job",
-      waitingTitle: "Proving deploy transaction",
-      successTitle: "Deploy transaction is proved",
-      failedTitle: "Failed to prove deploy transaction",
-    });
-
-    const transaction = await waitForProveJobPromise;
-    if (DEBUG) console.log("Transaction proved:", transaction?.slice(0, 50));
-    if (isError || !transaction) {
-      return;
-    }
-
-    await waitForArweaveTxPromise;
-
-    const sendResult = await sendTransaction(transaction);
-    if (DEBUG) console.log("Transaction sent:", sendResult);
-    if (
-      isError ||
-      sendResult.success === false ||
-      sendResult.hash === undefined
-    ) {
-      logItem({
-        id: "deploySend",
-        status: "error",
-        title: "Failed to send transaction to Mina blockchain",
-        description: `Failed to send transaction to Mina blockchain: ${
-          sendResult.status ? "status: " + sendResult.status + ", " : ""
-        } ${String(sendResult.error ?? "error D437")}`,
-        date: new Date(),
-      });
-      return;
-    }
 
     const waitForMinaTxPromise = waitForMinaTx({
-      hash: sendResult.hash,
+      hash: deployResult.hash,
       id: "deploySend",
       waitingTitle: "Waiting for token contract to be deployed",
       successTitle: "Token contract is deployed",
@@ -899,13 +473,13 @@ export default function LaunchToken() {
           " library..."
         ),
       });
-      const lib = await (libraries ?? loadLibraries());
+
       logWaitingItem({
         title: "Minting tokens",
         description: `Preparing data to mint ${tokenSymbol} tokens to ${mintItems.length} addresses`,
       });
       let nonce = await getAccountNonce(adminPublicKey);
-      let mintPromises: Promise<string | undefined>[] = [];
+      let mintPromises: Promise<any>[] = [];
       for (let i = 0; i < mintItems.length; i++) {
         const item = mintItems[i];
         const id = `mint-${i}`;
@@ -939,10 +513,12 @@ export default function LaunchToken() {
           updateLogItem,
           symbol: tokenSymbol,
           lib,
+          useHardcodedWallet,
+          sequence: i,
         });
         if (
           mintResult.success === false ||
-          mintResult.jobId === undefined ||
+          mintResult.hash === undefined ||
           isError
         ) {
           logItem({
@@ -956,15 +532,14 @@ export default function LaunchToken() {
           setIsError(true);
           return;
         }
-        const mintJobId = mintResult.jobId;
-        await sleep(1000);
 
-        const waitForMintJobPromise = waitForMintJob({
-          jobId: mintJobId,
-          id: `mint-${i}`,
-          sequence: i,
+        const waitForMintTxPromise = waitForMinaTx({
+          hash: mintResult.hash,
+          id,
+          type: "mint",
         });
-        mintPromises.push(waitForMintJobPromise);
+        mintPromises.push(waitForMintTxPromise);
+        await sleep(5000);
       }
       if (isError) {
         logItem({
@@ -1011,110 +586,13 @@ export default function LaunchToken() {
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 p-8">
       <h1 className="text-3xl font-bold text-center mb-8 bg-gradient-to-r from-[#F15B22] to-[#F9ECDE] text-transparent bg-clip-text">
-        zkCloudWorker Custom Token Launchpad
+        Mobile FungibleToken Test
       </h1>
 
-      <div className="flex justify-center space-x-8 mb-8">
-        <div className="flex flex-col items-center">
-          <Code className="h-12 w-12 text-[#F15B22] mb-2" />
-          <span>No Coding</span>
-        </div>
-        <div className="flex flex-col items-center">
-          <Zap className="h-12 w-12 text-[#F15B22] mb-2" />
-          <span>Mint Immediately</span>
-        </div>
-        <div className="flex flex-col items-center">
-          <DollarSign className="h-12 w-12 text-[#F15B22] mb-2" />
-          <span>Fixed Issue Fee</span>
-        </div>
-      </div>
       <div className="flex justify-center items-start">
-        <div className="flex flex-col w-1/3">
-          {url && (
-            <img
-              src={url}
-              alt="Preview"
-              className="w-64 h-64 bg-[#30363D] rounded-lg"
-            />
-          )}
-          {!url && (issuing || issued) && (
-            <div className="p-4 rounded-lg flex flex-col items-center space-y-2">
-              <img
-                src="/token.svg"
-                alt="zkCloudWorker Logo"
-                className="w-64 h-64 bg-[#30363D] rounded-lg"
-              />
-            </div>
-          )}
-          <div {...getRootProps()}>
-            {url && !issuing && !issued && (
-              <div className="bg-[#161B22] p-4 rounded-lg flex flex-col items-center space-y-2">
-                <label
-                  htmlFor="photo-upload"
-                  className="cursor-pointer flex items-center space-x-2"
-                >
-                  <CameraIcon className="text-[#8B949E] h-2 w-5" />
-                  <span className="text-sm">
-                    {isDragActive ? "Drop image here" : "Change image"}
-                  </span>
-                </label>
-                <input
-                  id="image-upload"
-                  className="hidden"
-                  {...getInputProps()}
-                />
-              </div>
-            )}
-            {!url && !issuing && !issued && (
-              <div className="bg-[#161B22] p-4 rounded-lg flex flex-col items-center space-y-2">
-                <label
-                  htmlFor="photo-upload"
-                  className="cursor-pointer flex items-center space-x-2"
-                >
-                  <CameraIcon className="text-[#8B949E] h-5 w-5" />
-                  <span className="text-sm">
-                    {isDragActive ? "Drop image here" : "Add image"}
-                  </span>
-                </label>
-                <input
-                  id="image-upload"
-                  className="hidden"
-                  {...getInputProps()}
-                />
-                <div className="w-[341.33px] h-64 bg-[#30363D] rounded-lg flex items-center justify-center" />
-              </div>
-            )}
-          </div>
-          {!issuing && !issued && (
-            <div className="p-4 rounded-lg flex flex-col items-center space-y-2">
-              <p className="text-sm text-[#F9ECDE]">
-                SVG is recommended with size less than 100kb
-              </p>
-            </div>
-          )}
-          {tokenSymbol && (
-            <div className="p-4 rounded-lg flex flex-col items-center space-y-2">
-              <p className="text-sm text-[#F9ECDE]">
-                Token Symbol: {tokenSymbol}
-              </p>
-            </div>
-          )}
-        </div>
-        <div className="flex flex-col w-2/3 space-y-4">
+        <div className="flex flex-col space-y-4">
           {!issuing && !issued && (
             <div className="space-y-6">
-              <div>
-                <Label htmlFor="token-name">Token Name</Label>
-                <Input
-                  id="token-name"
-                  placeholder="Enter token name"
-                  className="mt-1 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
-                  value={tokenName}
-                  onChange={(e) => {
-                    setTokenName(e.target.value);
-                  }}
-                />
-              </div>
               <div>
                 <Label htmlFor="token-symbol">
                   Token Symbol (max 6 characters)
@@ -1123,62 +601,13 @@ export default function LaunchToken() {
                   id="token-symbol"
                   placeholder="Enter token symbol"
                   className="mt-1 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
-                  value={tokenSymbol}
+                  defaultValue={tokenSymbol}
                   onChange={(e) => {
                     setTokenSymbol(e.target.value);
                   }}
                 />
               </div>
-              <div>
-                <Label htmlFor="token-description">Token Description</Label>
-                <Textarea
-                  id="token-description"
-                  placeholder="Enter token description"
-                  className="mt-1 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
-                  value={tokenDescription}
-                  onChange={(e) => setTokenDescription(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label htmlFor="website">Website</Label>
-                <Input
-                  id="website"
-                  placeholder="Optional"
-                  className="mt-1 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
-                  value={website}
-                  onChange={(e) => setWebsite(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label htmlFor="telegram">Telegram</Label>
-                <Input
-                  id="telegram"
-                  placeholder="Optional"
-                  className="mt-1 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
-                  value={telegram}
-                  onChange={(e) => setTelegram(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label htmlFor="twitter">Twitter</Label>
-                <Input
-                  id="twitter"
-                  placeholder="Optional"
-                  className="mt-1 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
-                  value={twitter}
-                  onChange={(e) => setTwitter(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label htmlFor="discord">Discord</Label>
-                <Input
-                  id="discord"
-                  placeholder="Optional"
-                  className="mt-1 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
-                  value={discord}
-                  onChange={(e) => setDiscord(e.target.value)}
-                />
-              </div>
+
               <div className="flex items-center">
                 <Label htmlFor="initial-mint">Mint Addresses</Label>
                 <button
@@ -1191,6 +620,18 @@ export default function LaunchToken() {
                 >
                   <PlusIcon className="h-4 w-4 mr-1" />
                 </button>
+              </div>
+              <div className="flex items-center">
+                <input
+                  id="use-hardcoded-wallet"
+                  type="checkbox"
+                  className="mr-2"
+                  checked={useHardcodedWallet}
+                  onChange={(e) => setUseHardcodedWallet(e.target.checked)}
+                />
+                <Label htmlFor="use-hardcoded-wallet">
+                  Use hardcoded wallet instead of Auro Wallet
+                </Label>
               </div>
 
               {mint.map((key, index) => (
@@ -1209,6 +650,7 @@ export default function LaunchToken() {
                       type="text"
                       placeholder="Amount"
                       className="pr-16 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
+                      defaultValue={mint[index].amount}
                       onChange={(e) =>
                         setMint((prev) => {
                           const newKeys = [...prev];
@@ -1231,7 +673,8 @@ export default function LaunchToken() {
                       id={`address-${index}`}
                       type="text"
                       placeholder="Address"
-                      className="pr-16 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
+                      className="bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
+                      defaultValue={mint[index].to}
                       onChange={(e) =>
                         setMint((prev) => {
                           const newKeys = [...prev];
