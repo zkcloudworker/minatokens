@@ -9,6 +9,7 @@ const chain = process.env.NEXT_PUBLIC_CHAIN;
 const WALLET = process.env.NEXT_PUBLIC_WALLET;
 const MINT_FEE = 1e8;
 const ISSUE_FEE = 1e9;
+const tinyAddress = "B62qiq8oVXcNAibgXQPXUTaPivKaSMoUxzZDZLBAfhg69JwjzNmcLTU";
 
 export async function deployToken(params: {
   tokenPrivateKey: string;
@@ -155,7 +156,7 @@ export async function deployToken(params: {
         error: "Sender does not have account",
       };
     }
-    const requiredBalance = 3 + fee / 1_000_000_000;
+    const requiredBalance = 3 + (fee * 2) / 1_000_000_000;
     if (requiredBalance > balance) {
       logItem({
         id: "insufficient-balance",
@@ -171,7 +172,29 @@ export async function deployToken(params: {
     }
 
     console.log("Sender balance:", await accountBalanceMina(sender));
-    const nonce = await getAccountNonce(sender.toBase58());
+    let nonce = await getAccountNonce(sender.toBase58());
+
+    if (useHardcodedWallet) {
+      logItem({
+        id: "compile tiny",
+        status: "waiting",
+        title: "Compiling TinyContract",
+        description: "Compiling TinyContract...",
+        date: new Date(),
+      });
+      console.time("compile tiny");
+      const compileTimeTiny = Date.now();
+      await TinyContract.compile();
+      console.timeEnd("compile tiny");
+      updateLogItem("compile tiny", {
+        status: "success",
+        title: "TinyContract compiled",
+        description: `TinyContract compiled in ${Math.floor(
+          (Date.now() - compileTimeTiny) / 1000
+        )} sec ${(Date.now() - compileTimeTiny) % 1000} ms`,
+        date: new Date(),
+      });
+    }
 
     const adminContractVerificationKey = verificationKeys[chain]?.admin;
     const tokenContractVerificationKey = verificationKeys[chain]?.token;
@@ -226,26 +249,6 @@ export async function deployToken(params: {
       description: `Deploy transaction is prepared in ${Math.floor(
         (Date.now() - txTimeStart) / 1000
       )} sec ${(Date.now() - txTimeStart) % 1000} ms`,
-      date: new Date(),
-    });
-
-    logItem({
-      id: "compile tiny",
-      status: "waiting",
-      title: "Compiling TinyContract",
-      description: "Compiling TinyContract...",
-      date: new Date(),
-    });
-    console.time("compile tiny");
-    const compileTimeTiny = Date.now();
-    await TinyContract.compile();
-    console.timeEnd("compile tiny");
-    updateLogItem("compile tiny", {
-      status: "success",
-      title: "TinyContract compiled",
-      description: `TinyContract compiled in ${Math.floor(
-        (Date.now() - compileTimeTiny) / 1000
-      )} sec ${(Date.now() - compileTimeTiny) % 1000} ms`,
       date: new Date(),
     });
 
