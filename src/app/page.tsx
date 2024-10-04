@@ -28,7 +28,7 @@ import { verifyFungibleTokenState } from "@/lib/verify";
 import { sendTransaction } from "@/lib/send";
 import { getAccountNonce } from "@/lib/nonce";
 import { checkMintData, Mint, MintVerified } from "@/lib/address";
-
+import { shortenString } from "@/lib/short";
 const DEBUG = process.env.NEXT_PUBLIC_DEBUG === "true";
 const ADMIN_ADDRESS = process.env.NEXT_PUBLIC_ADMIN_PK;
 let minted = 0;
@@ -103,7 +103,7 @@ export default function LaunchToken() {
               target="_blank"
               rel="noopener noreferrer"
             >
-              {hash}
+              {shortenString(hash)}
             </a>
             <br />
             to be included into the block.
@@ -124,7 +124,7 @@ export default function LaunchToken() {
               target="_blank"
               rel="noopener noreferrer"
             >
-              {hash}
+              {shortenString(hash)}
             </a>
             <br />
             to be included into the block.
@@ -170,7 +170,7 @@ export default function LaunchToken() {
               target="_blank"
               rel="noopener noreferrer"
             >
-              {hash}
+              {shortenString(hash)}
             </a>
             .
           </>
@@ -189,7 +189,7 @@ export default function LaunchToken() {
               target="_blank"
               rel="noopener noreferrer"
             >
-              {hash}
+              {shortenString(hash)}
             </a>
             .
           </>
@@ -266,7 +266,7 @@ export default function LaunchToken() {
             target="_blank"
             rel="noopener noreferrer"
           >
-            {tokenContractAddress}
+            {shortenString(tokenContractAddress)}
           </a>
           .
         </>
@@ -500,7 +500,7 @@ export default function LaunchToken() {
         else
           logWaitingItem({
             title: "Minting tokens",
-            description: `Preparing data to mint ${tokenSymbol} tokens to ${
+            description: `Preparing data to mint\n ${tokenSymbol} tokens to ${
               mintItems.length - (i + 1)
             } addresses`,
           });

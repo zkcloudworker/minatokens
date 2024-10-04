@@ -246,7 +246,7 @@ export async function deployToken(params: {
       updateLogItem("send tiny", {
         status: txTinyResult.status === "pending" ? "success" : "error",
         title: "TinyContract transaction sent",
-        description: `TinyContract transaction sent\n with status ${txTinyResult.status}\n and hash ${txTinyResult.hash}`,
+        description: `TinyContract transaction sent\n with status ${txTinyResult.status}\n and hash\n${txTinyResult.hash}`,
         date: new Date(),
       });
       if (useHardcodedWallet) nonce++;
