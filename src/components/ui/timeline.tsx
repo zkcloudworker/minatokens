@@ -194,7 +194,7 @@ export function Timeline(params: TimelineProps) {
 
   return (
     <div className="container mx-auto p-4 max-w-full sm:max-w-2xl">
-      <h1 className="text-xl font-bold mb-4">{title}</h1>
+      <h1 className="text-l font-bold mb-4">{title}</h1>
       <div className="space-y-3">
         {allItems.map((item, index) => (
           <div

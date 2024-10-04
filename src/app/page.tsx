@@ -587,7 +587,7 @@ export default function LaunchToken() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 p-8">
-      <h1 className="text-3xl font-bold text-center mb-8 bg-gradient-to-r from-[#F15B22] to-[#F9ECDE] text-transparent bg-clip-text">
+      <h1 className="text-xl font-bold text-center mb-8 bg-gradient-to-r from-[#F15B22] to-[#F9ECDE] text-transparent bg-clip-text">
         Mobile FungibleToken Test
       </h1>
 
