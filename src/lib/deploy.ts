@@ -266,12 +266,29 @@ export async function deployToken(params: {
         updateLogItem("send tiny", {
           status: "waiting",
           title: "Proving TinyContract transaction",
-          description: `Proving TinyContract transaction in cloud with jobId ${shortenString(
-            jobId
-          )}`,
+          description: React.createElement(
+            React.Fragment,
+            null,
+            "Proving TinyContract transaction in cloud with jobId  ",
+            React.createElement(
+              "a",
+              {
+                href: `https://zkcloudworker.com/job/${jobId}`,
+                className: "text-blue-500 hover:underline",
+                target: "_blank",
+                rel: "noopener noreferrer",
+              },
+              shortenString(jobId)
+            ),
+            "."
+          ),
           date: new Date(),
         });
-        const proof = await waitForJobResult(jobId);
+        let proof = await getResult(jobId);
+        while (proof === undefined) {
+          await sleep(5000);
+          proof = await getResult(jobId);
+        }
         if (proof === undefined || proof === "error") {
           updateLogItem("send tiny", {
             status: "error",
