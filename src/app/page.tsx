@@ -409,7 +409,7 @@ export default function LaunchToken() {
           ethereum,
         });
         console.log("Ethereum payment", payment);
-        if (!payment.success) {
+        if (!payment.success || !payment.tx) {
           updateLogItem("metamask-payment", {
             status: "error",
             title: "Failed to send Ethereum payment",
@@ -419,10 +419,23 @@ export default function LaunchToken() {
           setWaitingItem(undefined);
           return;
         }
+        // https://sepolia.etherscan.io/tx/0x18de184a0ec4bd4c6a640cc89f581ab0f3f531573e9d2b318720a79c580c98a5
         updateLogItem("metamask-payment", {
           status: "success",
           title: "Ethereum payment sent",
-          description: `Payment sent to Ethereum network`,
+          description: (
+            <>
+              Payment sent to Ethereum network with hash:{" "}
+              <a
+                href={`https://sepolia.etherscan.io/tx/${payment.tx}`}
+                className="text-blue-500 hover:underline"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {shortenString(payment.tx)}
+              </a>
+            </>
+          ),
           date: new Date(),
         });
         setWaitingItem(undefined);
@@ -675,7 +688,7 @@ export default function LaunchToken() {
         <div className="flex flex-col space-y-4">
           {!issuing && !issued && (
             <div className="space-y-6">
-              {!useTinyContract && (
+              {!useTinyContract && !metamask && (
                 <div>
                   <Label htmlFor="token-symbol">
                     Token Symbol (max 6 characters)
@@ -691,31 +704,35 @@ export default function LaunchToken() {
                   />
                 </div>
               )}
-              <div className="flex items-center">
-                <input
-                  id="use-hardcoded-wallet"
-                  type="checkbox"
-                  className="mr-2"
-                  checked={useHardcodedWallet}
-                  onChange={(e) => setUseHardcodedWallet(e.target.checked)}
-                />
-                <Label htmlFor="use-hardcoded-wallet">
-                  Use hardcoded wallet instead of Auro Wallet
-                </Label>
-              </div>
-              <div className="flex items-center">
-                <input
-                  id="use-tiny-contract"
-                  type="checkbox"
-                  className="mr-2"
-                  checked={useTinyContract}
-                  onChange={(e) => setUseTinyContract(e.target.checked)}
-                />
-                <Label htmlFor="use-tiny-contract">
-                  Use TinyContract to send zkApp tx
-                </Label>
-              </div>
-              {useTinyContract && (
+              {!metamask && (
+                <div className="flex items-center">
+                  <input
+                    id="use-hardcoded-wallet"
+                    type="checkbox"
+                    className="mr-2"
+                    checked={useHardcodedWallet}
+                    onChange={(e) => setUseHardcodedWallet(e.target.checked)}
+                  />
+                  <Label htmlFor="use-hardcoded-wallet">
+                    Use hardcoded wallet instead of Auro Wallet
+                  </Label>
+                </div>
+              )}
+              {!metamask && (
+                <div className="flex items-center">
+                  <input
+                    id="use-tiny-contract"
+                    type="checkbox"
+                    className="mr-2"
+                    checked={useTinyContract}
+                    onChange={(e) => setUseTinyContract(e.target.checked)}
+                  />
+                  <Label htmlFor="use-tiny-contract">
+                    Use TinyContract to send zkApp tx
+                  </Label>
+                </div>
+              )}
+              {useTinyContract && !metamask && (
                 <div className="flex items-center">
                   <input
                     id="use-cloud-proving"
@@ -729,18 +746,20 @@ export default function LaunchToken() {
                   </Label>
                 </div>
               )}
-              <div className="flex items-center">
-                <input
-                  id="calculate-root"
-                  type="checkbox"
-                  className="mr-2"
-                  checked={calculateRoot}
-                  onChange={(e) => setCalculateRoot(e.target.checked)}
-                />
-                <Label htmlFor="use-cloud-proving">
-                  Calculate Merkle Tree root
-                </Label>
-              </div>
+              {!metamask && (
+                <div className="flex items-center">
+                  <input
+                    id="calculate-root"
+                    type="checkbox"
+                    className="mr-2"
+                    checked={calculateRoot}
+                    onChange={(e) => setCalculateRoot(e.target.checked)}
+                  />
+                  <Label htmlFor="use-cloud-proving">
+                    Calculate Merkle Tree root
+                  </Label>
+                </div>
+              )}
               <div className="flex items-center">
                 <input
                   id="metamask"
@@ -754,7 +773,7 @@ export default function LaunchToken() {
                 </Label>
               </div>
 
-              {!useTinyContract && (
+              {!useTinyContract && !metamask && (
                 <div>
                   <div className="flex items-center">
                     <Label htmlFor="initial-mint">Mint Addresses</Label>

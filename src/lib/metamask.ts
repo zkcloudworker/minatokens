@@ -58,7 +58,11 @@ export async function connectMetamask(): Promise<{
 export async function sendEthereumPayment(params: {
   address: string;
   ethereum: SDKProvider;
-}) {
+}): Promise<{
+  success: boolean;
+  error?: string;
+  tx?: string;
+}> {
   const { address, ethereum } = params;
   try {
     if (!ethereum) {
@@ -78,6 +82,12 @@ export async function sendEthereumPayment(params: {
       ],
     });
     console.log("tx", tx);
+    if (!tx || typeof tx !== "string") {
+      return {
+        success: false,
+        error: "Failed to send transaction",
+      };
+    }
     return { success: true, tx };
   } catch (error: any) {
     console.error("Error sending Ethereum payment", error);
