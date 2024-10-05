@@ -29,6 +29,8 @@ import { sendTransaction } from "@/lib/send";
 import { getAccountNonce } from "@/lib/nonce";
 import { checkMintData, Mint, MintVerified } from "@/lib/address";
 import { shortenString } from "@/lib/short";
+import { connectMetamask } from "@/lib/metamask";
+
 const DEBUG = process.env.NEXT_PUBLIC_DEBUG === "true";
 const ADMIN_ADDRESS = process.env.NEXT_PUBLIC_ADMIN_PK;
 let minted = 0;
@@ -39,6 +41,7 @@ export default function LaunchToken() {
   const [useTinyContract, setUseTinyContract] = useState<boolean>(false);
   const [useCloudProving, setUseCloudProving] = useState<boolean>(false);
   const [calculateRoot, setCalculateRoot] = useState<boolean>(false);
+  const [metamask, setMetamask] = useState<boolean>(false);
   const [mint, setMint] = useState<Mint[]>([
     {
       amount: "1000",
@@ -358,6 +361,30 @@ export default function LaunchToken() {
 
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     console.log("Token Symbol:", tokenSymbol);
+    if (metamask) {
+      const { success, error, account } = await connectMetamask();
+      console.log("Connected to MetaMask", { success, error, account });
+      if (!success || !account) {
+        logItem({
+          id: "metamask",
+          status: "error",
+          title: "Failed to connect to Metamask wallet",
+          description: error ?? "Install the wallet to continue",
+          date: new Date(),
+        });
+      }
+      if (account) {
+        logItem({
+          id: "metamask",
+          status: "success",
+          title: "Connected to Metamask wallet",
+          description: `Account: ${account}`,
+          date: new Date(),
+        });
+      }
+      setWaitingItem(undefined);
+      return;
+    }
 
     if (!libraries) setLibraries(loadLibraries());
     let adminPublicKey = ADMIN_ADDRESS;
@@ -643,33 +670,44 @@ export default function LaunchToken() {
                 </Label>
               </div>
               {useTinyContract && (
-                <>
-                  <div className="flex items-center">
-                    <input
-                      id="use-cloud-proving"
-                      type="checkbox"
-                      className="mr-2"
-                      checked={useCloudProving}
-                      onChange={(e) => setUseCloudProving(e.target.checked)}
-                    />
-                    <Label htmlFor="use-cloud-proving">
-                      Use Cloud Proving to send TinyContract zkApp tx
-                    </Label>
-                  </div>
-                  <div className="flex items-center">
-                    <input
-                      id="calculate-root"
-                      type="checkbox"
-                      className="mr-2"
-                      checked={calculateRoot}
-                      onChange={(e) => setCalculateRoot(e.target.checked)}
-                    />
-                    <Label htmlFor="use-cloud-proving">
-                      Calculate Merkle Tree root
-                    </Label>
-                  </div>
-                </>
+                <div className="flex items-center">
+                  <input
+                    id="use-cloud-proving"
+                    type="checkbox"
+                    className="mr-2"
+                    checked={useCloudProving}
+                    onChange={(e) => setUseCloudProving(e.target.checked)}
+                  />
+                  <Label htmlFor="use-cloud-proving">
+                    Use Cloud Proving to send TinyContract zkApp tx
+                  </Label>
+                </div>
               )}
+              <div className="flex items-center">
+                <input
+                  id="calculate-root"
+                  type="checkbox"
+                  className="mr-2"
+                  checked={calculateRoot}
+                  onChange={(e) => setCalculateRoot(e.target.checked)}
+                />
+                <Label htmlFor="use-cloud-proving">
+                  Calculate Merkle Tree root
+                </Label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  id="metamask"
+                  type="checkbox"
+                  className="mr-2"
+                  checked={metamask}
+                  onChange={(e) => setMetamask(e.target.checked)}
+                />
+                <Label htmlFor="use-cloud-proving">
+                  Sent Sepolia tx with MetaMask
+                </Label>
+              </div>
+
               {!useTinyContract && (
                 <div>
                   <div className="flex items-center">
