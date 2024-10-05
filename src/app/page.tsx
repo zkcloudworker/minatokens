@@ -38,6 +38,7 @@ export default function LaunchToken() {
   const [useHardcodedWallet, setUseHardcodedWallet] = useState<boolean>(false);
   const [useTinyContract, setUseTinyContract] = useState<boolean>(false);
   const [useCloudProving, setUseCloudProving] = useState<boolean>(false);
+  const [calculateRoot, setCalculateRoot] = useState<boolean>(false);
   const [mint, setMint] = useState<Mint[]>([
     {
       amount: "1000",
@@ -408,6 +409,7 @@ export default function LaunchToken() {
       useHardcodedWallet,
       useTinyContract,
       useCloudProving,
+      calculateRoot,
     });
     if (DEBUG) console.log("Deploy result:", deployResult);
     if (useTinyContract) return;
@@ -640,18 +642,34 @@ export default function LaunchToken() {
                   Use TinyContract to send zkApp tx
                 </Label>
               </div>
-              <div className="flex items-center">
-                <input
-                  id="use-cloud-proving"
-                  type="checkbox"
-                  className="mr-2"
-                  checked={useCloudProving}
-                  onChange={(e) => setUseCloudProving(e.target.checked)}
-                />
-                <Label htmlFor="use-cloud-proving">
-                  Use Cloud Proving to send TinyContract zkApp tx
-                </Label>
-              </div>
+              {useTinyContract && (
+                <>
+                  <div className="flex items-center">
+                    <input
+                      id="use-cloud-proving"
+                      type="checkbox"
+                      className="mr-2"
+                      checked={useCloudProving}
+                      onChange={(e) => setUseCloudProving(e.target.checked)}
+                    />
+                    <Label htmlFor="use-cloud-proving">
+                      Use Cloud Proving to send TinyContract zkApp tx
+                    </Label>
+                  </div>
+                  <div className="flex items-center">
+                    <input
+                      id="calculate-root"
+                      type="checkbox"
+                      className="mr-2"
+                      checked={calculateRoot}
+                      onChange={(e) => setCalculateRoot(e.target.checked)}
+                    />
+                    <Label htmlFor="use-cloud-proving">
+                      Calculate Merkle Tree root
+                    </Label>
+                  </div>
+                </>
+              )}
               {!useTinyContract && (
                 <div>
                   <div className="flex items-center">

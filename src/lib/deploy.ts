@@ -32,6 +32,7 @@ export async function deployToken(params: {
   useHardcodedWallet: boolean;
   useTinyContract: boolean;
   useCloudProving: boolean;
+  calculateRoot: boolean;
 }): Promise<{
   success: boolean;
   error?: string;
@@ -53,6 +54,7 @@ export async function deployToken(params: {
     useHardcodedWallet,
     useTinyContract,
     useCloudProving,
+    calculateRoot,
   } = params;
   const uri = "mobile test";
 
@@ -83,6 +85,7 @@ export async function deployToken(params: {
         UInt8,
         Bool,
         Field,
+        MerkleMap,
       },
       zkcloudworker: {
         FungibleToken,
@@ -95,6 +98,36 @@ export async function deployToken(params: {
         TinyContract,
       },
     } = lib;
+
+    if (calculateRoot) {
+      logItem({
+        id: "calculate root",
+        status: "waiting",
+        title: "Calculating Merkle Tree root",
+        description: "Calculating Merkle Tree root...",
+        date: new Date(),
+      });
+      const map = new MerkleMap();
+      const value1 = Field(1).add(Field(2));
+      const value2 = Field(3).add(Field(4));
+      map.set(Field(1), value1);
+      map.set(Field(2), value2);
+      map.set(Field(3), Field(4));
+      map.set(Field(5), Field(6));
+      map.set(Field(7), Field(8));
+      map.set(Field(9), Field(10));
+      map.set(Field(11), Field(12));
+      map.set(Field(13), Field(14));
+      map.set(Field(15), Field(16));
+      const root = map.getRoot().toJSON();
+      console.log("Merkle Tree root:", root.toString());
+      updateLogItem("calculate root", {
+        status: "success",
+        title: "Merkle Tree root calculated",
+        description: `Merkle Tree root: ${root}`,
+        date: new Date(),
+      });
+    }
 
     if (useTinyContract && !useCloudProving) {
       logItem({
@@ -228,6 +261,7 @@ export async function deployToken(params: {
       const tinyMemo = `tiny tx,  ${
         useCloudProving ? "cloud proving" : "web proving"
       }`;
+
       const txTiny = await Mina.transaction(
         { sender, fee, memo: tinyMemo, nonce: nonce++ },
         async () => {

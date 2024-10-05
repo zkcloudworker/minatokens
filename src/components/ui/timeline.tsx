@@ -219,7 +219,7 @@ export function Timeline(params: TimelineProps) {
                   {formatTime(item.date)}
                 </span>
               </div>
-              <p className="text-xs text-gray-600 mt-0.5">{item.description}</p>
+              <p className="text-xs text-gray-300 mt-0.5">{item.description}</p>
             </div>
           </div>
         ))}
