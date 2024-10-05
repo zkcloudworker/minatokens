@@ -306,10 +306,12 @@ export default function LaunchToken() {
 
     setIssuing(true);
     setTimeLineItems([]);
-    logWaitingItem({
-      title: "Issuing token",
-      description: "Checking data...",
-    });
+    if (!metamask)
+      logWaitingItem({
+        title: "Issuing token",
+        description: "Checking data...",
+      });
+
     logItem({
       id: "system-info",
       status: "success",
@@ -362,30 +364,53 @@ export default function LaunchToken() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     console.log("Token Symbol:", tokenSymbol);
     if (metamask) {
-      const { success, error, account } = await connectMetamask();
-      console.log("Connected to MetaMask", { success, error, account });
-      if (!success || !account) {
-        logItem({
-          id: "metamask",
+      logItem({
+        id: "metamask",
+        status: "waiting",
+        title: "Connecting to MetaMask",
+        description: "Connecting to MetaMask...",
+        date: new Date(),
+      });
+      const { success, error, account, ethereum } = await connectMetamask();
+      console.log("Connected to MetaMask", {
+        success,
+        error,
+        account,
+        ethereum,
+      });
+      if (!success || !account || !ethereum) {
+        updateLogItem("metamask", {
           status: "error",
           title: "Failed to connect to Metamask wallet",
           description: error ?? "Install the wallet to continue",
           date: new Date(),
         });
+        setWaitingItem(undefined);
+        return;
       }
       if (account) {
-        logItem({
-          id: "metamask",
+        updateLogItem("metamask", {
           status: "success",
           title: "Connected to Metamask wallet",
           description: `Account: ${account}`,
           date: new Date(),
         });
+        await sleep(1000);
+        logItem({
+          id: "metamask-payment",
+          status: "waiting",
+          title: "Sending Ethereum payment",
+          description: "Sending payment to Ethereum network...",
+          date: new Date(),
+        });
 
-        const payment = await sendEthereumPayment();
+        const payment = await sendEthereumPayment({
+          address: account,
+          ethereum,
+        });
+        console.log("Ethereum payment", payment);
         if (!payment.success) {
-          logItem({
-            id: "metamask",
+          updateLogItem("metamask-payment", {
             status: "error",
             title: "Failed to send Ethereum payment",
             description: payment.error,
@@ -394,13 +419,14 @@ export default function LaunchToken() {
           setWaitingItem(undefined);
           return;
         }
-        logItem({
-          id: "metamask",
+        updateLogItem("metamask-payment", {
           status: "success",
           title: "Ethereum payment sent",
-          description: `Payment: ${payment.tx}`,
+          description: `Payment sent to Ethereum network`,
           date: new Date(),
         });
+        setWaitingItem(undefined);
+        return;
       }
       setWaitingItem(undefined);
       return;
@@ -806,7 +832,11 @@ export default function LaunchToken() {
                 onClick={handleIssueToken}
                 disabled={issuing}
               >
-                {useTinyContract ? "Send tiny zkApp tx" : "Issue Token"}
+                {metamask
+                  ? "Send Sepolia tx with MetaMask"
+                  : useTinyContract
+                  ? "Send tiny zkApp tx"
+                  : "Issue Token"}
               </Button>
             </div>
           )}
