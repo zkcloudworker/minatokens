@@ -244,9 +244,11 @@ export async function deployToken(params: {
       const txTinyResult = await txTiny.send();
       console.timeEnd("sent tiny");
       updateLogItem("send tiny", {
-        status: txTinyResult.status === "pending" ? "success" : "error",
+        status: txTinyResult?.status === "pending" ? "success" : "error",
         title: "TinyContract transaction sent",
-        description: `TinyContract transaction sent\n with status ${txTinyResult.status}\n and hash\n${txTinyResult.hash}`,
+        description: `TinyContract transaction sent\n with status ${
+          txTinyResult?.status ?? ""
+        }\n and hash ${txTinyResult?.hash ?? ""}`,
         date: new Date(),
       });
       if (useHardcodedWallet) nonce++;
