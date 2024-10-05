@@ -2,8 +2,15 @@
 
 import { getAccountNonce } from "./nonce";
 import { TimelineItem } from "../components/ui/timeline";
+import {
+  sendTinyTransaction,
+  TinyTransactionParams,
+  getResult,
+  waitForJobResult,
+} from "./zkcloudworker";
 import React from "react";
 import { verificationKeys } from "./vk";
+import { shortenString } from "./short";
 const DEBUG = process.env.NEXT_PUBLIC_DEBUG === "true";
 const chain = process.env.NEXT_PUBLIC_CHAIN;
 const WALLET = process.env.NEXT_PUBLIC_WALLET;
@@ -24,6 +31,7 @@ export async function deployToken(params: {
   updateLogItem: (id: string, update: Partial<TimelineItem>) => void;
   useHardcodedWallet: boolean;
   useTinyContract: boolean;
+  useCloudProving: boolean;
 }): Promise<{
   success: boolean;
   error?: string;
@@ -44,6 +52,7 @@ export async function deployToken(params: {
     updateLogItem,
     useHardcodedWallet,
     useTinyContract,
+    useCloudProving,
   } = params;
   const uri = "mobile test";
 
@@ -87,7 +96,7 @@ export async function deployToken(params: {
       },
     } = lib;
 
-    if (useTinyContract) {
+    if (useTinyContract && !useCloudProving) {
       logItem({
         id: "compile tiny",
         status: "waiting",
@@ -107,7 +116,20 @@ export async function deployToken(params: {
         )} sec ${(Date.now() - compileTimeTiny) % 1000} ms`,
         date: new Date(),
       });
-      await sleep(5000);
+      await sleep(1000);
+    }
+    if (useTinyContract) {
+      if (process.env.NEXT_PUBLIC_ADMIN_SK === undefined) {
+        throw new Error("NEXT_PUBLIC_ADMIN_SK is undefined");
+      }
+
+      logItem({
+        id: "send tiny",
+        status: "waiting",
+        title: "Sending transaction to TinyContract",
+        description: "Sending transaction to TinyContract...",
+        date: new Date(),
+      });
     }
 
     let adminPrivateKey = PrivateKey.empty();
@@ -197,61 +219,177 @@ export async function deployToken(params: {
         throw new Error("NEXT_PUBLIC_ADMIN_SK is undefined");
       }
 
-      logItem({
-        id: "send tiny",
-        status: "waiting",
-        title: "Sending transaction to TinyContract",
-        description: "Sending transaction to TinyContract...",
-        date: new Date(),
-      });
-      const privateKeyTiny = PrivateKey.fromBase58(
-        process.env.NEXT_PUBLIC_ADMIN_SK
-      );
-      const senderTiny = privateKeyTiny.toPublicKey();
       await fetchMinaAccount({
-        publicKey: senderTiny,
+        publicKey: sender,
         force: true,
       });
-      const nonceTiny = await getAccountNonce(senderTiny.toBase58());
       const tiny = new TinyContract(PublicKey.fromBase58(tinyAddress));
+      const value = Date.now();
+      const tinyMemo = `tiny tx,  ${
+        useCloudProving ? "cloud proving" : "web proving"
+      }`;
       const txTiny = await Mina.transaction(
-        { sender: senderTiny, fee, memo: "tiny tx", nonce: nonceTiny },
+        { sender, fee, memo: tinyMemo, nonce: nonce++ },
         async () => {
-          await tiny.setValue(Field(10));
+          await tiny.setValue(Field(value));
         }
       );
-      txTiny.sign([privateKeyTiny]);
+      if (useHardcodedWallet) txTiny.sign([adminPrivateKey]);
       updateLogItem("send tiny", {
         status: "waiting",
         title: "Proving TinyContract transaction",
         description: "Proving TinyContract transaction...",
         date: new Date(),
       });
-      console.time("proved tiny");
-      const proveTimeTiny = Date.now();
-      await txTiny.prove();
-      console.timeEnd("proved tiny");
-      updateLogItem("send tiny", {
-        status: "waiting",
-        title: "TinyContract transaction proved",
-        description: `TinyContract transaction proved in ${Math.floor(
-          (Date.now() - proveTimeTiny) / 1000
-        )} sec ${(Date.now() - proveTimeTiny) % 1000} ms`,
-        date: new Date(),
-      });
-      await sleep(5000);
-      console.time("send tiny");
-      const txTinyResult = await txTiny.send();
-      console.timeEnd("sent tiny");
-      updateLogItem("send tiny", {
-        status: txTinyResult?.status === "pending" ? "success" : "error",
-        title: "TinyContract transaction sent",
-        description: `TinyContract transaction sent\n with status ${
-          txTinyResult?.status ?? ""
-        }\n and hash ${txTinyResult?.hash ?? ""}`,
-        date: new Date(),
-      });
-      if (useHardcodedWallet) nonce++;
+      if (useCloudProving) {
+        const serializedTransaction = serializeTransaction(txTiny);
+        const jobId = await sendTinyTransaction({
+          chain,
+          contractAddress: tinyAddress,
+          serializedTransaction,
+          sender: sender.toBase58(),
+          value,
+          sendTransaction: false,
+        });
+        if (jobId === undefined) {
+          updateLogItem("send tiny", {
+            status: "error",
+            title: "Failed to prove TinyContract transaction",
+            description: "Failed to prove TinyContract transaction",
+            date: new Date(),
+          });
+          return {
+            success: false,
+            error: "Failed to prove TinyContract transaction",
+          };
+        }
+        updateLogItem("send tiny", {
+          status: "waiting",
+          title: "Proving TinyContract transaction",
+          description: `Proving TinyContract transaction in cloud with jobId ${shortenString(
+            jobId
+          )}`,
+          date: new Date(),
+        });
+        const proof = await waitForJobResult(jobId);
+        if (proof === undefined || proof === "error") {
+          updateLogItem("send tiny", {
+            status: "error",
+            title: "Failed to prove TinyContract transaction",
+            description: "Failed to prove TinyContract transaction",
+            date: new Date(),
+          });
+          return {
+            success: false,
+            error: "Failed to prove TinyContract transaction",
+          };
+        }
+
+        let txProved = undefined;
+        try {
+          const { success, tx } = JSON.parse(proof);
+          if (!success || tx === undefined) {
+            updateLogItem("send tiny", {
+              status: "error",
+              title: "Failed to prove TinyContract transaction",
+              description: "Failed to prove TinyContract transaction",
+              date: new Date(),
+            });
+            return {
+              success: false,
+              error: "Failed to prove TinyContract transaction",
+            };
+          }
+          txProved = tx;
+        } catch (error) {
+          console.error("Error in deployToken", error);
+          updateLogItem("send tiny", {
+            status: "error",
+            title: "Failed to prove TinyContract transaction",
+            description: "Failed to prove TinyContract transaction",
+            date: new Date(),
+          });
+          return {
+            success: false,
+            error: "Failed to prove TinyContract transaction",
+          };
+        }
+        updateLogItem("send tiny", {
+          status: "waiting",
+          title: "Sending TinyContract transaction",
+          description: "Sending TinyContract transaction, please sign it...",
+          date: new Date(),
+        });
+        const payload = {
+          transaction: txProved,
+          feePayer: {
+            fee: fee,
+            memo: tinyMemo,
+          },
+        };
+
+        let hash = undefined;
+        const txTinyResult = await mina?.sendTransaction(payload);
+        if (DEBUG) console.log("Transaction result", txTinyResult);
+        hash = txTinyResult?.hash;
+        updateLogItem("send tiny", {
+          status: hash ? "success" : "error",
+          title: "TinyContract transaction sent",
+          description: hash
+            ? `TinyContract transaction proved and sent\n with hash ${hash}`
+            : "Failed to send TinyContract transaction",
+          date: new Date(),
+        });
+      } else {
+        console.time("proved tiny");
+        const proveTimeTiny = Date.now();
+        await txTiny.prove();
+        console.timeEnd("proved tiny");
+        updateLogItem("send tiny", {
+          status: "waiting",
+          title: "TinyContract transaction proved",
+          description: `TinyContract transaction proved in ${Math.floor(
+            (Date.now() - proveTimeTiny) / 1000
+          )} sec ${(Date.now() - proveTimeTiny) % 1000} ms`,
+          date: new Date(),
+        });
+        await sleep(5000);
+        console.time("send tiny");
+        if (useHardcodedWallet) {
+          const txTinyResult = await txTiny.send();
+          console.timeEnd("sent tiny");
+          updateLogItem("send tiny", {
+            status: txTinyResult?.status === "pending" ? "success" : "error",
+            title: "TinyContract transaction sent",
+            description: `TinyContract transaction sent\n with status ${
+              txTinyResult?.status ?? ""
+            }\n and hash ${txTinyResult?.hash ?? ""}`,
+            date: new Date(),
+          });
+        } else {
+          const transaction = txTiny.toJSON();
+          const payload = {
+            transaction,
+            feePayer: {
+              fee: fee,
+              memo: tinyMemo,
+            },
+          };
+
+          let hash = undefined;
+          const txTinyResult = await mina?.sendTransaction(payload);
+          if (DEBUG) console.log("Transaction result", txTinyResult);
+          hash = txTinyResult?.hash;
+          updateLogItem("send tiny", {
+            status: hash ? "success" : "error",
+            title: "TinyContract transaction sent",
+            description: hash
+              ? `TinyContract transaction sent\n with hash ${hash}`
+              : "Failed to send TinyContract transaction",
+            date: new Date(),
+          });
+        }
+      }
     }
 
     logItem({
@@ -356,7 +494,7 @@ export async function deployToken(params: {
       )} sec ${(Date.now() - compileTimeToken) % 1000} ms`,
       date: new Date(),
     });
-    await sleep(10000);
+    await sleep(1000);
 
     logItem({
       id: "prove",
@@ -365,7 +503,7 @@ export async function deployToken(params: {
       description: "Proving transaction...",
       date: new Date(),
     });
-    await sleep(10000);
+    await sleep(1000);
     const proveTime = Date.now();
     console.time("proved");
     await tx.prove();
@@ -378,7 +516,7 @@ export async function deployToken(params: {
       )} sec ${(Date.now() - proveTime) % 1000} ms`,
       date: new Date(),
     });
-    await sleep(5000);
+    await sleep(1000);
     console.time("sent transaction");
     logItem({
       id: "send transaction",

@@ -37,6 +37,7 @@ export default function LaunchToken() {
   const [tokenSymbol, setTokenSymbol] = useState<string>("TEST");
   const [useHardcodedWallet, setUseHardcodedWallet] = useState<boolean>(false);
   const [useTinyContract, setUseTinyContract] = useState<boolean>(false);
+  const [useCloudProving, setUseCloudProving] = useState<boolean>(false);
   const [mint, setMint] = useState<Mint[]>([
     {
       amount: "1000",
@@ -235,7 +236,7 @@ export default function LaunchToken() {
     while (!verified && !isError && count++ < 100) {
       if (DEBUG)
         console.log("Waiting for contract state to be verified...", verified);
-      await sleep(5000);
+      await sleep(10000);
       verified = await verifyFungibleTokenState({
         tokenContractAddress,
         adminContractAddress,
@@ -406,6 +407,7 @@ export default function LaunchToken() {
       updateLogItem,
       useHardcodedWallet,
       useTinyContract,
+      useCloudProving,
     });
     if (DEBUG) console.log("Deploy result:", deployResult);
     if (
@@ -543,7 +545,7 @@ export default function LaunchToken() {
           type: "mint",
         });
         mintPromises.push(waitForMintTxPromise);
-        await sleep(5000);
+        await sleep(1000);
       }
       if (isError) {
         logItem({
@@ -633,6 +635,18 @@ export default function LaunchToken() {
                 />
                 <Label htmlFor="use-tiny-contract">
                   Use TinyContract first to send zkApp tx
+                </Label>
+              </div>
+              <div className="flex items-center">
+                <input
+                  id="use-cloud-proving"
+                  type="checkbox"
+                  className="mr-2"
+                  checked={useCloudProving}
+                  onChange={(e) => setUseCloudProving(e.target.checked)}
+                />
+                <Label htmlFor="use-cloud-proving">
+                  Use Cloud Proving to send TinyContract zkApp tx
                 </Label>
               </div>
 
