@@ -11,7 +11,7 @@ export async function connectMetamask() {
       error: "No Infura API key found",
     };
   }
-  const MMSDK = new MetaMaskSDK({
+  const sdk = new MetaMaskSDK({
     dappMetadata: {
       name: "Mobile FungibleToken test",
       url: window.location.href,
@@ -20,7 +20,9 @@ export async function connectMetamask() {
   });
 
   // You can also access via window.ethereum.
-  const ethereum = MMSDK.getProvider();
+  const connected = await sdk.connect();
+  console.log("connected", connected);
+  const ethereum = sdk.getProvider();
   console.log("ethereum", ethereum);
   if (!ethereum) {
     return {
