@@ -335,8 +335,26 @@ export async function deployToken(params: {
         updateLogItem("send tiny", {
           status: hash ? "success" : "error",
           title: "TinyContract transaction sent",
+          // description: hash
+          //   ? `TinyContract transaction proved and sent\n with hash ${hash}`
+          //   : "Failed to send TinyContract transaction",
           description: hash
-            ? `TinyContract transaction proved and sent\n with hash ${hash}`
+            ? React.createElement(
+                React.Fragment,
+                null,
+                "TinyContract transaction proved in cloud and sent with transaction hash ",
+                React.createElement(
+                  "a",
+                  {
+                    href: `https://minascan.io/devnet/tx/${hash}?type=zk-tx`,
+                    className: "text-blue-500 hover:underline",
+                    target: "_blank",
+                    rel: "noopener noreferrer",
+                  },
+                  shortenString(hash)
+                ),
+                "."
+              )
             : "Failed to send TinyContract transaction",
           date: new Date(),
         });
@@ -384,7 +402,22 @@ export async function deployToken(params: {
             status: hash ? "success" : "error",
             title: "TinyContract transaction sent",
             description: hash
-              ? `TinyContract transaction sent\n with hash ${hash}`
+              ? React.createElement(
+                  React.Fragment,
+                  null,
+                  "TinyContract transaction proved in browser and sent with transaction hash ",
+                  React.createElement(
+                    "a",
+                    {
+                      href: `https://minascan.io/devnet/tx/${hash}?type=zk-tx`,
+                      className: "text-blue-500 hover:underline",
+                      target: "_blank",
+                      rel: "noopener noreferrer",
+                    },
+                    shortenString(hash)
+                  ),
+                  "."
+                )
               : "Failed to send TinyContract transaction",
             date: new Date(),
           });
