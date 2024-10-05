@@ -3,6 +3,7 @@
 import { MetaMaskSDK } from "@metamask/sdk";
 const testAccount = "0x171aF8eBc0dB6b3649E89a06e800A99f28466343";
 const INFURA_API_KEY = process.env.NEXT_PUBLIC_INFURA_API_KEY;
+let ethereum: any = undefined;
 
 export async function connectMetamask() {
   if (!INFURA_API_KEY) {
@@ -22,7 +23,7 @@ export async function connectMetamask() {
   // You can also access via window.ethereum.
   const connected = await sdk.connect();
   console.log("connected", connected);
-  const ethereum = sdk.getProvider();
+  ethereum = sdk.getProvider();
   console.log("ethereum", ethereum);
   if (!ethereum) {
     return {
@@ -47,4 +48,23 @@ export async function connectMetamask() {
     success: true,
     account,
   };
+}
+
+export async function sendEthereumPayment() {
+  try {
+    const tx = await ethereum.request({
+      method: "eth_sendTransaction",
+      params: [
+        {
+          to: testAccount,
+          value: "0.0001",
+        },
+      ],
+    });
+    console.log("tx", tx);
+    return { success: true, tx };
+  } catch (error) {
+    console.error("Error sending Ethereum payment", error);
+    return { success: false, error: error as string };
+  }
 }

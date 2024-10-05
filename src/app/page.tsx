@@ -29,7 +29,7 @@ import { sendTransaction } from "@/lib/send";
 import { getAccountNonce } from "@/lib/nonce";
 import { checkMintData, Mint, MintVerified } from "@/lib/address";
 import { shortenString } from "@/lib/short";
-import { connectMetamask } from "@/lib/metamask";
+import { connectMetamask, sendEthereumPayment } from "@/lib/metamask";
 
 const DEBUG = process.env.NEXT_PUBLIC_DEBUG === "true";
 const ADMIN_ADDRESS = process.env.NEXT_PUBLIC_ADMIN_PK;
@@ -379,6 +379,26 @@ export default function LaunchToken() {
           status: "success",
           title: "Connected to Metamask wallet",
           description: `Account: ${account}`,
+          date: new Date(),
+        });
+
+        const payment = await sendEthereumPayment();
+        if (!payment.success) {
+          logItem({
+            id: "metamask",
+            status: "error",
+            title: "Failed to send Ethereum payment",
+            description: payment.error,
+            date: new Date(),
+          });
+          setWaitingItem(undefined);
+          return;
+        }
+        logItem({
+          id: "metamask",
+          status: "success",
+          title: "Ethereum payment sent",
+          description: `Payment: ${payment.tx}`,
           date: new Date(),
         });
       }
