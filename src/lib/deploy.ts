@@ -375,6 +375,7 @@ export async function deployToken(params: {
             : "Failed to send TinyContract transaction",
           date: new Date(),
         });
+        await sleep(5000);
       } else {
         console.time("proved tiny");
         const proveTimeTiny = Date.now();
@@ -440,6 +441,9 @@ export async function deployToken(params: {
           });
         }
       }
+      return {
+        success: true,
+      };
     }
 
     logItem({

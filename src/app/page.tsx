@@ -410,6 +410,7 @@ export default function LaunchToken() {
       useCloudProving,
     });
     if (DEBUG) console.log("Deploy result:", deployResult);
+    if (useTinyContract) return;
     if (
       deployResult.success === false ||
       deployResult.hash === undefined ||
@@ -599,20 +600,22 @@ export default function LaunchToken() {
         <div className="flex flex-col space-y-4">
           {!issuing && !issued && (
             <div className="space-y-6">
-              <div>
-                <Label htmlFor="token-symbol">
-                  Token Symbol (max 6 characters)
-                </Label>
-                <Input
-                  id="token-symbol"
-                  placeholder="Enter token symbol"
-                  className="mt-1 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
-                  defaultValue={tokenSymbol}
-                  onChange={(e) => {
-                    setTokenSymbol(e.target.value);
-                  }}
-                />
-              </div>
+              {!useTinyContract && (
+                <div>
+                  <Label htmlFor="token-symbol">
+                    Token Symbol (max 6 characters)
+                  </Label>
+                  <Input
+                    id="token-symbol"
+                    placeholder="Enter token symbol"
+                    className="mt-1 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
+                    defaultValue={tokenSymbol}
+                    onChange={(e) => {
+                      setTokenSymbol(e.target.value);
+                    }}
+                  />
+                </div>
+              )}
               <div className="flex items-center">
                 <input
                   id="use-hardcoded-wallet"
@@ -634,7 +637,7 @@ export default function LaunchToken() {
                   onChange={(e) => setUseTinyContract(e.target.checked)}
                 />
                 <Label htmlFor="use-tiny-contract">
-                  Use TinyContract first to send zkApp tx
+                  Use TinyContract to send zkApp tx
                 </Label>
               </div>
               <div className="flex items-center">
@@ -649,79 +652,85 @@ export default function LaunchToken() {
                   Use Cloud Proving to send TinyContract zkApp tx
                 </Label>
               </div>
-
-              <div className="flex items-center">
-                <Label htmlFor="initial-mint">Mint Addresses</Label>
-                <button
-                  className="bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-lg text-sm px-2 py-1 flex items-center ml-3"
-                  onClick={() =>
-                    setMint((prev) => {
-                      return [...prev, { amount: "", to: "" }];
-                    })
-                  }
-                >
-                  <PlusIcon className="h-4 w-4 mr-1" />
-                </button>
-              </div>
-
-              {mint.map((key, index) => (
-                <div key={`Mint-${index}`} className="relative flex space-x-4">
-                  <div className="w-1/3">
-                    {index === 0 && (
-                      <label
-                        htmlFor={`amount-${index}`}
-                        className="block text-sm font-medium"
-                      >
-                        Amount
-                      </label>
-                    )}
-                    <Input
-                      id={`amount-${index}`}
-                      type="text"
-                      placeholder="Amount"
-                      className="pr-16 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
-                      defaultValue={mint[index].amount}
-                      onChange={(e) =>
+              {!useTinyContract && (
+                <div>
+                  <div className="flex items-center">
+                    <Label htmlFor="initial-mint">Mint Addresses</Label>
+                    <button
+                      className="bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-lg text-sm px-2 py-1 flex items-center ml-3"
+                      onClick={() =>
                         setMint((prev) => {
-                          const newKeys = [...prev];
-                          newKeys[index].amount = e.target.value;
-                          return newKeys;
+                          return [...prev, { amount: "", to: "" }];
                         })
                       }
-                    />
+                    >
+                      <PlusIcon className="h-4 w-4 mr-1" />
+                    </button>
                   </div>
-                  <div className="w-2/3">
-                    {index === 0 && (
-                      <label
-                        htmlFor={`address-${index}`}
-                        className="block text-sm font-medium"
-                      >
-                        Address (B62...)
-                      </label>
-                    )}
-                    <Input
-                      id={`address-${index}`}
-                      type="text"
-                      placeholder="Address"
-                      className="bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
-                      defaultValue={mint[index].to}
-                      onChange={(e) =>
-                        setMint((prev) => {
-                          const newKeys = [...prev];
-                          newKeys[index].to = e.target.value;
-                          return newKeys;
-                        })
-                      }
-                    />
-                  </div>
+
+                  {mint.map((key, index) => (
+                    <div
+                      key={`Mint-${index}`}
+                      className="relative flex space-x-4"
+                    >
+                      <div className="w-1/3">
+                        {index === 0 && (
+                          <label
+                            htmlFor={`amount-${index}`}
+                            className="block text-sm font-medium"
+                          >
+                            Amount
+                          </label>
+                        )}
+                        <Input
+                          id={`amount-${index}`}
+                          type="text"
+                          placeholder="Amount"
+                          className="pr-16 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
+                          defaultValue={mint[index].amount}
+                          onChange={(e) =>
+                            setMint((prev) => {
+                              const newKeys = [...prev];
+                              newKeys[index].amount = e.target.value;
+                              return newKeys;
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="w-2/3">
+                        {index === 0 && (
+                          <label
+                            htmlFor={`address-${index}`}
+                            className="block text-sm font-medium"
+                          >
+                            Address (B62...)
+                          </label>
+                        )}
+                        <Input
+                          id={`address-${index}`}
+                          type="text"
+                          placeholder="Address"
+                          className="bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
+                          defaultValue={mint[index].to}
+                          onChange={(e) =>
+                            setMint((prev) => {
+                              const newKeys = [...prev];
+                              newKeys[index].to = e.target.value;
+                              return newKeys;
+                            })
+                          }
+                        />
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
               <Button
                 className="w-full bg-[#F15B22] hover:bg-[#d14d1d] text-white"
                 onClick={handleIssueToken}
                 disabled={issuing}
               >
-                Issue Token
+                {useTinyContract ? "Send tiny zkApp tx" : "Issue Token"}
               </Button>
             </div>
           )}
