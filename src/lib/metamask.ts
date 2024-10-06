@@ -71,6 +71,11 @@ export async function sendEthereumPayment(params: {
         error: "Metamask not installed",
       };
     }
+    const gasPrice = await ethereum.request({
+      method: "eth_gasPrice",
+      params: [],
+    });
+    console.log("current gas price", gasPrice);
     const tx = await ethereum.request({
       method: "eth_sendTransaction",
       params: [
@@ -78,6 +83,7 @@ export async function sendEthereumPayment(params: {
           from: address,
           to: testAccount,
           value: "0x38d7ea4c68000", // 0.0001 ETH in hexadecimal
+          gasPrice,
         },
       ],
     });
