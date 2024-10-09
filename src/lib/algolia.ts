@@ -1,14 +1,15 @@
 "use server";
 import { algoliasearch } from "algoliasearch";
 const { ALGOLIA_KEY, ALGOLIA_PROJECT } = process.env;
-import { DeployedTokenInfo } from "./token";
+import { TokenInfo } from "./token";
 
 const chain = process.env.NEXT_PUBLIC_CHAIN;
 const DEBUG = process.env.NEXT_PUBLIC_DEBUG === "true";
 
-export async function algoliaWriteToken(
-  params: DeployedTokenInfo
-): Promise<boolean> {
+export async function algoliaWriteToken(params: {
+  tokenAddress: string;
+  info: TokenInfo;
+}): Promise<boolean> {
   if (chain === undefined) throw new Error("NEXT_PUBLIC_CHAIN is undefined");
   if (chain !== "devnet" && chain !== "mainnet")
     throw new Error("NEXT_PUBLIC_CHAIN must be devnet or mainnet");
@@ -16,14 +17,14 @@ export async function algoliaWriteToken(
   if (ALGOLIA_PROJECT === undefined)
     throw new Error("ALGOLIA_PROJECT is undefined");
   try {
-    const { symbol, tokenAddress } = params;
     const client = algoliasearch(ALGOLIA_PROJECT, ALGOLIA_KEY);
     const indexName = `tokens-${chain}`;
     if (DEBUG) console.log("algoliaWriteToken", params, indexName);
 
     const data = {
-      objectID: tokenAddress,
-      ...params,
+      objectID: params.tokenAddress,
+      tokenAddress: params.tokenAddress,
+      ...params.info,
     };
 
     const result = await client.saveObject({

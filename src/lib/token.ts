@@ -30,9 +30,3 @@ export interface TokenInfo {
   data: object | undefined;
   isMDA: boolean | undefined;
 }
-
-export interface DeployedTokenInfo extends TokenInfo {
-  tokenAddress: string;
-  adminContractAddress: string;
-  adminAddress: string;
-}
