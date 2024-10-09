@@ -36,6 +36,7 @@ import { verifyFungibleTokenState } from "@/lib/verify";
 import { sendTransaction } from "@/lib/send";
 import { getAccountNonce } from "@/lib/nonce";
 import { checkMintData, Mint, MintVerified } from "@/lib/address";
+import { TokenInfo } from "@/lib/token";
 
 const DEBUG = process.env.NEXT_PUBLIC_DEBUG === "true";
 const AURO_TEST = process.env.NEXT_PUBLIC_AURO_TEST === "true";
@@ -664,7 +665,7 @@ export default function LaunchToken() {
     // TODO: add issuer
     if (!libraries) setLibraries(loadLibraries());
 
-    const json = {
+    const json: TokenInfo = {
       symbol: tokenSymbol,
       name: tokenName,
       description: tokenDescription,
@@ -678,6 +679,8 @@ export default function LaunchToken() {
       adminContractsCode: [
         "https://github.com/MinaFoundation/mina-fungible-token/blob/main/FungibleTokenAdmin.ts",
       ],
+      data: undefined,
+      isMDA: undefined,
     };
 
     const { address, network, error, success } = await connectWallet({});
