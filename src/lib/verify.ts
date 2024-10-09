@@ -1,16 +1,19 @@
 "use server";
 import { fetchMinaAccount, initBlockchain, FungibleToken } from "zkcloudworker";
 import { Mina, PublicKey } from "o1js";
-const chain = process.env.NEXT_PUBLIC_CHAIN;
+import { TokenInfo } from "./token";
+import { algoliaWriteToken } from "./algolia";
 
-// TODO: index verified tokens
+const chain = process.env.NEXT_PUBLIC_CHAIN;
 
 export async function verifyFungibleTokenState(params: {
   tokenContractAddress: string;
   adminContractAddress: string;
   adminAddress: string;
+  info: TokenInfo;
 }): Promise<boolean> {
-  const { tokenContractAddress, adminContractAddress, adminAddress } = params;
+  const { tokenContractAddress, adminContractAddress, adminAddress, info } =
+    params;
   try {
     if (chain === undefined) throw new Error("NEXT_PUBLIC_CHAIN is undefined");
     if (chain !== "devnet" && chain !== "mainnet")
@@ -57,6 +60,17 @@ export async function verifyFungibleTokenState(params: {
         adminAddress: adminAddress,
       });
       return false;
+    }
+    const writeResult = await algoliaWriteToken({
+      tokenAddress: tokenContractPublicKey.toBase58(),
+      info,
+    });
+    if (!writeResult) {
+      console.error("algoliaWriteToken failed", {
+        tokenAddress: tokenContractPublicKey.toBase58(),
+        info,
+      });
+      // TODO: add to monitoring tools
     }
     return true;
   } catch (error) {
