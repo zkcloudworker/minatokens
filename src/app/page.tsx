@@ -37,6 +37,8 @@ import { sendTransaction } from "@/lib/send";
 import { getAccountNonce } from "@/lib/nonce";
 import { checkMintData, Mint, MintVerified } from "@/lib/address";
 import { TokenInfo } from "@/lib/token";
+import { algoliaGetToken } from "@/lib/algolia";
+import { getTokenState } from "@/lib/state";
 
 const DEBUG = process.env.NEXT_PUBLIC_DEBUG === "true";
 const AURO_TEST = process.env.NEXT_PUBLIC_AURO_TEST === "true";
@@ -605,6 +607,11 @@ export default function LaunchToken() {
   }
 
   async function handleIssueToken() {
+    // const tokenState = await getTokenState({
+    //   tokenAddress: "B62qipaYZLRBsAKA9pxsyqnfkTWrgEDNmLQt9sEkUnog3JsfW6FCJ1e",
+    // });
+    // console.log("Token state:", tokenState);
+    // return;
     const walletInfo = await getWalletInfo();
     if (DEBUG) console.log("Wallet Info:", walletInfo);
     const systemInfo = await getSystemInfo();

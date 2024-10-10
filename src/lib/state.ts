@@ -1,32 +1,38 @@
 "use server";
 import { fetchMinaAccount, initBlockchain, FungibleToken } from "zkcloudworker";
 import { Mina, PublicKey, Bool } from "o1js";
+import { TokenState, DeployedTokenInfo } from "./token";
+import { algoliaGetToken, algoliaWriteToken } from "./algolia";
 const chain = process.env.NEXT_PUBLIC_CHAIN;
 
-export async function getTokenState(tokenContractAddress: string): Promise<
+export async function getTokenState(params: {
+  tokenAddress: string;
+  info?: DeployedTokenInfo;
+}): Promise<
   | {
       success: true;
-      adminContractAddress: string;
-      adminAddress: string;
-      totalSupply: number;
-      isPaused: boolean;
-      decimals: number;
+      tokenState: TokenState;
+      isStateUpdated: boolean;
     }
   | {
       success: false;
       error: string;
     }
 > {
+  const { tokenAddress, info } = params;
   try {
     if (chain === undefined) throw new Error("NEXT_PUBLIC_CHAIN is undefined");
     if (chain !== "devnet" && chain !== "mainnet")
       throw new Error("NEXT_PUBLIC_CHAIN must be devnet or mainnet");
     await initBlockchain(chain);
-    const tokenContractPublicKey = PublicKey.fromBase58(tokenContractAddress);
+    const tokenContractPublicKey = PublicKey.fromBase58(tokenAddress);
     const tokenContract = new FungibleToken(tokenContractPublicKey);
+
     await fetchMinaAccount({ publicKey: tokenContractPublicKey, force: false });
     if (!Mina.hasAccount(tokenContractPublicKey)) {
-      console.error("Token contract account not found");
+      console.error("getTokenState: Token contract account not found", {
+        tokenAddress,
+      });
       return { success: false, error: "Token contract account not found" };
     }
     const tokenId = tokenContract.deriveTokenId();
@@ -36,7 +42,12 @@ export async function getTokenState(tokenContractAddress: string): Promise<
       force: false,
     });
     if (!Mina.hasAccount(tokenContractPublicKey, tokenId)) {
-      console.error("Token contract totalSupply account not found");
+      console.error(
+        "getTokenState: Token contract totalSupply account not found",
+        {
+          tokenAddress,
+        }
+      );
       return {
         success: false,
         error: "Token contract totalSupply account not found",
@@ -52,16 +63,9 @@ export async function getTokenState(tokenContractAddress: string): Promise<
 
     await fetchMinaAccount({ publicKey: adminContractPublicKey, force: false });
     if (!Mina.hasAccount(adminContractPublicKey)) {
-      console.error("Admin contract account not found");
-      return {
-        success: false,
-        error: "Admin contract account not found",
-      };
-    }
-
-    await fetchMinaAccount({ publicKey: adminContractPublicKey, force: false });
-    if (!Mina.hasAccount(adminContractPublicKey)) {
-      console.error("Admin contract account not found");
+      console.error("getTokenState: Admin contract account not found", {
+        tokenAddress,
+      });
       return {
         success: false,
         error: "Admin contract account not found",
@@ -79,13 +83,55 @@ export async function getTokenState(tokenContractAddress: string): Promise<
       };
     }
     const adminAddress = PublicKey.fromFields([adminAddress0, adminAddress1]);
-    return {
-      success: true,
+    const tokenState: TokenState = {
+      tokenContractAddress: tokenContractPublicKey.toBase58(),
       adminContractAddress: adminContractPublicKey.toBase58(),
       adminAddress: adminAddress.toBase58(),
       totalSupply,
       isPaused,
       decimals,
+    };
+    let tokenInfo = info;
+    let isStateUpdated = false;
+    if (tokenInfo === undefined) {
+      tokenInfo = await algoliaGetToken({
+        tokenAddress: tokenContractPublicKey.toBase58(),
+      });
+    }
+    if (tokenInfo === undefined) {
+      console.error("getTokenState: Token info not found", {
+        tokenAddress,
+      });
+    } else {
+      if (
+        tokenInfo.adminContractAddress !== tokenState.adminContractAddress ||
+        tokenInfo.adminAddress !== tokenState.adminAddress ||
+        tokenInfo.totalSupply !== tokenState.totalSupply ||
+        tokenInfo.isPaused !== tokenState.isPaused ||
+        tokenInfo.decimals !== tokenState.decimals
+      ) {
+        console.error("getTokenState: Token info mismatch, updating the info", {
+          tokenAddress,
+          tokenInfo,
+          tokenState,
+        });
+        tokenInfo.adminContractAddress = tokenState.adminContractAddress;
+        tokenInfo.adminAddress = tokenState.adminAddress;
+        tokenInfo.totalSupply = tokenState.totalSupply;
+        tokenInfo.isPaused = tokenState.isPaused;
+        tokenInfo.decimals = tokenState.decimals;
+        console.log("Updating token info", { tokenInfo });
+        await algoliaWriteToken({
+          tokenAddress: tokenContractPublicKey.toBase58(),
+          info: tokenInfo,
+        });
+        isStateUpdated = true;
+      }
+    }
+    return {
+      success: true,
+      tokenState,
+      isStateUpdated,
     };
   } catch (error: any) {
     console.error("getTokenState catch", error);
