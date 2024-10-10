@@ -1,13 +1,9 @@
 "use client";
 
 import type { PrivateKey, PublicKey } from "o1js";
+import { TokenDeployParams } from "./token";
 
-export async function deployTokenParams(): Promise<{
-  tokenPrivateKey: string;
-  adminContractPrivateKey: string;
-  tokenPublicKey: string;
-  adminContractPublicKey: string;
-}> {
+export async function deployTokenParams(): Promise<TokenDeployParams> {
   console.time("loaded o1js");
   const { PrivateKey } = await import("o1js");
   console.timeEnd("loaded o1js");

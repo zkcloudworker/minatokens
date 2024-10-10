@@ -30,3 +30,25 @@ export interface TokenInfo {
   data: object | undefined;
   isMDA: boolean | undefined;
 }
+
+export interface TokenState {
+  tokenContractAddress: string;
+  adminContractAddress: string;
+  adminAddress: string;
+  totalSupply: number;
+  isPaused: boolean;
+  decimals: number;
+}
+
+export interface DeployedTokenInfo extends TokenInfo, TokenState {
+  created: number;
+  updated: number;
+  chain: string;
+}
+
+export interface TokenDeployParams {
+  tokenPrivateKey: string;
+  adminContractPrivateKey: string;
+  tokenPublicKey: string;
+  adminContractPublicKey: string;
+}

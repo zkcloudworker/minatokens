@@ -37,10 +37,14 @@ import { sendTransaction } from "@/lib/send";
 import { getAccountNonce } from "@/lib/nonce";
 import { checkMintData, Mint, MintVerified } from "@/lib/address";
 import { TokenInfo } from "@/lib/token";
+import { algoliaGetToken } from "@/lib/algolia";
+import { getTokenState } from "@/lib/state";
+import { algoliaGetTokenList } from "@/lib/search";
 
 const DEBUG = process.env.NEXT_PUBLIC_DEBUG === "true";
 const AURO_TEST = process.env.NEXT_PUBLIC_AURO_TEST === "true";
 const ADMIN_ADDRESS = process.env.NEXT_PUBLIC_ADMIN_PK;
+const chainId = process.env.NEXT_PUBLIC_CHAIN_ID;
 let minted = 0;
 
 export default function LaunchToken() {
@@ -277,11 +281,14 @@ export default function LaunchToken() {
       status: "waiting",
     });
     let count = 0;
+    const timestamp = Date.now();
     let verified = await verifyFungibleTokenState({
       tokenContractAddress,
       adminContractAddress,
       adminAddress,
       info,
+      created: timestamp,
+      updated: timestamp,
     });
     if (DEBUG)
       console.log("Waiting for contract state to be verified...", verified);
@@ -294,6 +301,8 @@ export default function LaunchToken() {
         adminContractAddress,
         adminAddress,
         info,
+        created: timestamp,
+        updated: timestamp,
       });
     }
     if (DEBUG) console.log("Final status", { verified, count });
@@ -605,6 +614,22 @@ export default function LaunchToken() {
   }
 
   async function handleIssueToken() {
+    // const tokenState = await getTokenState({
+    //   tokenAddress: "B62qpizYLJFJTtCUQyrocxDyBX8wSs68P14BkHVqyK8DuxVjkp39MZz",
+    // });
+    // console.log("Token state:", tokenState);
+    // return;
+    // const tokenList = await algoliaGetTokenList({
+    //   query: "bhjbjh",
+    //   hitsPerPage: 100,
+    //   page: 0,
+    // });
+    // console.log("Token list:", tokenList);
+    // return;
+    if (chainId === undefined) {
+      console.error("Chain ID is not set");
+      return;
+    }
     const walletInfo = await getWalletInfo();
     if (DEBUG) console.log("Wallet Info:", walletInfo);
     const systemInfo = await getSystemInfo();
