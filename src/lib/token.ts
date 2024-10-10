@@ -40,7 +40,11 @@ export interface TokenState {
   decimals: number;
 }
 
-export interface DeployedTokenInfo extends TokenInfo, TokenState {}
+export interface DeployedTokenInfo extends TokenInfo, TokenState {
+  created: number;
+  updated: number;
+  chain: string;
+}
 
 export interface TokenDeployParams {
   tokenPrivateKey: string;

@@ -4,7 +4,7 @@ import { Mina, PublicKey, Bool } from "o1js";
 import { TokenState, DeployedTokenInfo } from "./token";
 import { algoliaGetToken, algoliaWriteToken } from "./algolia";
 const chain = process.env.NEXT_PUBLIC_CHAIN;
-
+const chainId = process.env.NEXT_PUBLIC_CHAIN_ID;
 export async function getTokenState(params: {
   tokenAddress: string;
   info?: DeployedTokenInfo;
@@ -24,6 +24,8 @@ export async function getTokenState(params: {
     if (chain === undefined) throw new Error("NEXT_PUBLIC_CHAIN is undefined");
     if (chain !== "devnet" && chain !== "mainnet")
       throw new Error("NEXT_PUBLIC_CHAIN must be devnet or mainnet");
+    if (chainId === undefined)
+      throw new Error("NEXT_PUBLIC_CHAIN_ID is undefined");
     await initBlockchain(chain);
     const tokenContractPublicKey = PublicKey.fromBase58(tokenAddress);
     const tokenContract = new FungibleToken(tokenContractPublicKey);
@@ -108,7 +110,10 @@ export async function getTokenState(params: {
         tokenInfo.adminAddress !== tokenState.adminAddress ||
         tokenInfo.totalSupply !== tokenState.totalSupply ||
         tokenInfo.isPaused !== tokenState.isPaused ||
-        tokenInfo.decimals !== tokenState.decimals
+        tokenInfo.decimals !== tokenState.decimals ||
+        tokenInfo.chain === undefined ||
+        tokenInfo.created === undefined ||
+        tokenInfo.updated === undefined
       ) {
         console.error("getTokenState: Token info mismatch, updating the info", {
           tokenAddress,
@@ -120,6 +125,9 @@ export async function getTokenState(params: {
         tokenInfo.totalSupply = tokenState.totalSupply;
         tokenInfo.isPaused = tokenState.isPaused;
         tokenInfo.decimals = tokenState.decimals;
+        tokenInfo.updated = Date.now();
+        if (!tokenInfo.created) tokenInfo.created = tokenInfo.updated;
+        if (!tokenInfo.chain) tokenInfo.chain = chainId;
         console.log("Updating token info", { tokenInfo });
         await algoliaWriteToken({
           tokenAddress: tokenContractPublicKey.toBase58(),
