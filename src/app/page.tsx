@@ -39,6 +39,7 @@ import { checkMintData, Mint, MintVerified } from "@/lib/address";
 import { TokenInfo } from "@/lib/token";
 import { algoliaGetToken } from "@/lib/algolia";
 import { getTokenState } from "@/lib/state";
+import { algoliaGetTokenList } from "@/lib/search";
 
 const DEBUG = process.env.NEXT_PUBLIC_DEBUG === "true";
 const AURO_TEST = process.env.NEXT_PUBLIC_AURO_TEST === "true";
@@ -617,6 +618,13 @@ export default function LaunchToken() {
     //   tokenAddress: "B62qpizYLJFJTtCUQyrocxDyBX8wSs68P14BkHVqyK8DuxVjkp39MZz",
     // });
     // console.log("Token state:", tokenState);
+    // return;
+    // const tokenList = await algoliaGetTokenList({
+    //   query: "bhjbjh",
+    //   hitsPerPage: 100,
+    //   page: 0,
+    // });
+    // console.log("Token list:", tokenList);
     // return;
     if (chainId === undefined) {
       console.error("Chain ID is not set");
