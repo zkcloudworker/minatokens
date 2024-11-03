@@ -12,8 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Code, Zap, DollarSign } from "lucide-react";
-import { deployTokenParams } from "@/lib/keys";
-import { deployToken } from "@/lib/deploy";
+import { deployTokenParams } from "@/lib/keys_v1";
+import { deployToken_v1 } from "@/lib/deploy_v1";
 import { mintToken } from "@/lib/mint";
 import {
   Timeline,
@@ -23,8 +23,8 @@ import {
 import { getTxStatusFast } from "@/lib/txstatus-fast";
 import { connectWallet, getWalletInfo } from "@/lib/wallet";
 import { getSystemInfo } from "@/lib/system-info";
-import { o1jsInfo } from "@/lib/o1js-info";
-import { loadLibraries } from "@/lib/libraries";
+import { o1jsInfo_v1 } from "@/lib/o1js-info_v1";
+// import { loadLibraries_v1 } from "@/lib/libraries_v1";
 import { verifyFungibleTokenState } from "@/lib/verify";
 import { sendTransaction } from "@/lib/send";
 import { getAccountNonce } from "@/lib/nonce";
@@ -38,8 +38,8 @@ let minted = 0;
 
 export default function LaunchToken() {
   const [tokenSymbol, setTokenSymbol] = useState<string>("TEST");
-  const [useHardcodedWallet, setUseHardcodedWallet] = useState<boolean>(false);
-  const [useTinyContract, setUseTinyContract] = useState<boolean>(false);
+  const [useHardcodedWallet, setUseHardcodedWallet] = useState<boolean>(true);
+  const [useTinyContract, setUseTinyContract] = useState<boolean>(true);
   const [useCloudProving, setUseCloudProving] = useState<boolean>(false);
   const [calculateRoot, setCalculateRoot] = useState<boolean>(false);
   const [metamask, setMetamask] = useState<boolean>(false);
@@ -54,20 +54,18 @@ export default function LaunchToken() {
     },
   ]);
   const [issuing, setIssuing] = useState<boolean>(false);
-  const [showIframe, setShowIframe] = useState(false);
   const [issued, setIssued] = useState<boolean>(false);
   const [timelineItems, setTimeLineItems] = useState<TimelineItem[]>([]);
   const [waitingItem, setWaitingItem] = useState<TimelineItem | undefined>(
     undefined
   );
   const [isError, setIsError] = useState<boolean>(false);
-  const [libraries, setLibraries] = useState<
-    | Promise<{
-        o1js: typeof import("o1js");
-        zkcloudworker: typeof import("zkcloudworker");
-      }>
-    | undefined
-  >(undefined);
+  // const [libraries, setLibraries] = useState<
+  //   | Promise<{
+  //       o1js_v1: typeof import("o1js_v1");
+  //     }>
+  //   | undefined
+  // >(undefined);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   function logItem(item: TimelineItem) {
@@ -80,7 +78,18 @@ export default function LaunchToken() {
 
   async function use_o1js_v1() {
     console.log("Using o1js v1.9.1");
-    setShowIframe(true);
+    const iframe = document.createElement("iframe");
+    iframe.src = "http://localhost:3000/";
+    iframe.style.width = "100%";
+    iframe.style.height = "600px";
+    iframe.style.border = "none";
+    iframe.setAttribute("sandbox", "allow-scripts allow-same-origin");
+
+    const container = document.createElement("div");
+    container.style.marginTop = "20px";
+    container.appendChild(iframe);
+
+    document.body.appendChild(container);
   }
 
   async function waitForMinaTx(params: {
@@ -302,7 +311,7 @@ export default function LaunchToken() {
 
   async function handleIssueToken() {
     const systemInfo = await getSystemInfo();
-    const o1jsVersion = await o1jsInfo();
+    const o1jsVersion = await o1jsInfo_v1();
     if (DEBUG) console.log("System Info:", systemInfo);
     if (DEBUG) console.log("Navigator:", navigator);
     if (DEBUG) console.log("o1js Info:", o1jsVersion);
@@ -461,7 +470,7 @@ export default function LaunchToken() {
       return;
     }
 
-    if (!libraries) setLibraries(loadLibraries());
+    // if (!libraries) setLibraries(loadLibraries_v1());
     let adminPublicKey = ADMIN_ADDRESS;
 
     if (!useHardcodedWallet) {
@@ -499,13 +508,13 @@ export default function LaunchToken() {
       adminContractPublicKey,
     } = await deployParamsPromise;
     if (DEBUG) console.log("Deploy Params received");
-    const lib = await (libraries ?? loadLibraries());
-    const deployResult = await deployToken({
+    // const lib = await (libraries ?? loadLibraries_v1());
+    const deployResult = await deployToken_v1({
       tokenPrivateKey,
       adminContractPrivateKey,
       adminPublicKey,
       symbol: tokenSymbol,
-      lib,
+      // lib,
       logItem,
       updateLogItem,
       useHardcodedWallet,
@@ -515,363 +524,24 @@ export default function LaunchToken() {
     });
     if (DEBUG) console.log("Deploy result:", deployResult);
     if (useTinyContract) return;
-    if (
-      deployResult.success === false ||
-      deployResult.hash === undefined ||
-      isError
-    ) {
-      updateLogItem("cloud-proving-job", {
-        status: "error",
-        title: "Deploying token contract failed",
-        description: "Failed to deploy token contract",
-        date: new Date(),
-      });
-      setWaitingItem(undefined);
-      return;
-    }
-
-    const waitForMinaTxPromise = waitForMinaTx({
-      hash: deployResult.hash,
-      id: "deploySend",
-      waitingTitle: "Waiting for token contract to be deployed",
-      successTitle: "Token contract is deployed",
-      failedTitle: "Failed to deploy token contract",
-      type: "deploy",
-    });
-
-    await waitForMinaTxPromise;
-
-    if (isError) {
-      return;
-    }
-
-    await waitForContractVerification({
-      tokenContractAddress: tokenPublicKey,
-      adminContractAddress: adminContractPublicKey,
-      adminAddress: adminPublicKey,
-      id: "contractVerification",
-      waitingTitle: "Verifying token contract state",
-      successTitle: "Token contract state is verified",
-      failedTitle: "Failed to verify token contract state",
-    });
-    if (isError) {
-      return;
-    }
-
-    if (DEBUG) {
-      console.log("Minting tokens", mintItems);
-    }
-
-    minted = 0;
-    if (mintItems.length > 0) {
-      logWaitingItem({
-        title: "Minting tokens",
-        description: createElement(
-          "span",
-          null,
-          "Loading ",
-          createElement(
-            "a",
-            {
-              href: "https://docs.minaprotocol.com/zkapps/o1js",
-              target: "_blank",
-              rel: "noopener noreferrer",
-            },
-            "o1js"
-          ),
-          " library..."
-        ),
-      });
-
-      logWaitingItem({
-        title: "Minting tokens",
-        description: `Preparing data to mint ${tokenSymbol} tokens to ${mintItems.length} addresses`,
-      });
-      let nonce = await getAccountNonce(adminPublicKey);
-      let mintPromises: Promise<any>[] = [];
-      for (let i = 0; i < mintItems.length; i++) {
-        const item = mintItems[i];
-        const id = `mint-${i}`;
-        logItem({
-          id,
-          status: "waiting",
-          title: `Minting ${item.amount} ${tokenSymbol} to ${shortenString(
-            item.to
-          )}`,
-          description: `Building transaction...`,
-          date: new Date(),
-        });
-        if (i === mintItems.length - 1)
-          logWaitingItem({
-            title: "Minting tokens",
-            description: `Waiting for mint transactions to be created and proved`,
-          });
-        else
-          logWaitingItem({
-            title: "Minting tokens",
-            description: `Preparing data to mint\n ${tokenSymbol} tokens to ${
-              mintItems.length - (i + 1)
-            } addresses`,
-          });
-        const mintResult = await mintToken({
-          tokenPublicKey,
-          adminContractPublicKey,
-          adminPublicKey,
-          to: item.to,
-          amount: item.amount,
-          nonce: nonce++,
-          id,
-          updateLogItem,
-          symbol: tokenSymbol,
-          lib,
-          useHardcodedWallet,
-          sequence: i,
-        });
-        if (
-          mintResult.success === false ||
-          mintResult.hash === undefined ||
-          isError
-        ) {
-          logItem({
-            id,
-            status: "error",
-            title: "Failed to mint tokens",
-            description: mintResult.error ?? "Mint error",
-            date: new Date(),
-          });
-          setWaitingItem(undefined);
-          setIsError(true);
-          return;
-        }
-
-        const waitForMintTxPromise = waitForMinaTx({
-          hash: mintResult.hash,
-          id,
-          type: "mint",
-        });
-        mintPromises.push(waitForMintTxPromise);
-        await sleep(1000);
-      }
-      if (isError) {
-        logItem({
-          id: "mint",
-          status: "error",
-          title: "Failed to mint tokens",
-          description: "Failed to mint tokens",
-          date: new Date(),
-        });
-        setWaitingItem(undefined);
-        setIsError(true);
-        return;
-      }
-      logWaitingItem({
-        title: "Minting tokens",
-        description: `Waiting for mint transactions to be included into a block`,
-      });
-      await Promise.all(mintPromises);
-      if (isError) {
-        logItem({
-          id: "mint",
-          status: "error",
-          title: "Failed to mint tokens",
-          description: "Failed to mint tokens",
-          date: new Date(),
-        });
-        setWaitingItem(undefined);
-        setIsError(true);
-        return;
-      }
-      logItem({
-        id: "mint",
-        status: "success",
-        title: `Tokens are minted to ${mintItems.length} addresses`,
-        description: `All mint transactions are included into a block`,
-        date: new Date(),
-      });
-    }
-    setWaitingItem(undefined);
-    setIssuing(false);
-    setIssued(true);
   }
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 p-8">
       <h1 className="text-xl font-bold text-center mb-8 bg-gradient-to-r from-[#F15B22] to-[#F9ECDE] text-transparent bg-clip-text">
-        o1js 2.0.0 Test
+        o1js 1.9.1 Test
       </h1>
 
       <div className="flex justify-center items-start">
         <div className="flex flex-col space-y-4">
           {!issuing && !issued && (
             <div className="space-y-6">
-              {!useTinyContract && !metamask && (
-                <div>
-                  <Label htmlFor="token-symbol">
-                    Token Symbol (max 6 characters)
-                  </Label>
-                  <Input
-                    id="token-symbol"
-                    placeholder="Enter token symbol"
-                    className="mt-1 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
-                    defaultValue={tokenSymbol}
-                    onChange={(e) => {
-                      setTokenSymbol(e.target.value);
-                    }}
-                  />
-                </div>
-              )}
-              {!metamask && (
-                <div className="flex items-center">
-                  <input
-                    id="use-hardcoded-wallet"
-                    type="checkbox"
-                    className="mr-2"
-                    checked={useHardcodedWallet}
-                    onChange={(e) => setUseHardcodedWallet(e.target.checked)}
-                  />
-                  <Label htmlFor="use-hardcoded-wallet">
-                    Use hardcoded wallet instead of Auro Wallet
-                  </Label>
-                </div>
-              )}
-              {!metamask && (
-                <div className="flex items-center">
-                  <input
-                    id="use-tiny-contract"
-                    type="checkbox"
-                    className="mr-2"
-                    checked={useTinyContract}
-                    onChange={(e) => setUseTinyContract(e.target.checked)}
-                  />
-                  <Label htmlFor="use-tiny-contract">
-                    Use TinyContract to send zkApp tx
-                  </Label>
-                </div>
-              )}
-              {useTinyContract && !metamask && (
-                <div className="flex items-center">
-                  <input
-                    id="use-cloud-proving"
-                    type="checkbox"
-                    className="mr-2"
-                    checked={useCloudProving}
-                    onChange={(e) => setUseCloudProving(e.target.checked)}
-                  />
-                  <Label htmlFor="use-cloud-proving">
-                    Use Cloud Proving to send TinyContract zkApp tx
-                  </Label>
-                </div>
-              )}
-              {!metamask && (
-                <div className="flex items-center">
-                  <input
-                    id="calculate-root"
-                    type="checkbox"
-                    className="mr-2"
-                    checked={calculateRoot}
-                    onChange={(e) => setCalculateRoot(e.target.checked)}
-                  />
-                  <Label htmlFor="use-cloud-proving">
-                    Calculate Merkle Tree root
-                  </Label>
-                </div>
-              )}
-              <div className="flex items-center">
-                <input
-                  id="metamask"
-                  type="checkbox"
-                  className="mr-2"
-                  checked={metamask}
-                  onChange={(e) => setMetamask(e.target.checked)}
-                />
-                <Label htmlFor="use-cloud-proving">
-                  Sent Sepolia tx with MetaMask
-                </Label>
-              </div>
-
-              {!useTinyContract && !metamask && (
-                <div>
-                  <div className="flex items-center">
-                    <Label htmlFor="initial-mint">Mint Addresses</Label>
-                    <button
-                      className="bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-lg text-sm px-2 py-1 flex items-center ml-3"
-                      onClick={() =>
-                        setMint((prev) => {
-                          return [...prev, { amount: "", to: "" }];
-                        })
-                      }
-                    >
-                      <PlusIcon className="h-4 w-4 mr-1" />
-                    </button>
-                  </div>
-
-                  {mint.map((key, index) => (
-                    <div
-                      key={`Mint-${index}`}
-                      className="relative flex space-x-4"
-                    >
-                      <div className="w-1/3">
-                        {index === 0 && (
-                          <label
-                            htmlFor={`amount-${index}`}
-                            className="block text-sm font-medium"
-                          >
-                            Amount
-                          </label>
-                        )}
-                        <Input
-                          id={`amount-${index}`}
-                          type="text"
-                          placeholder="Amount"
-                          className="pr-16 bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
-                          defaultValue={mint[index].amount}
-                          onChange={(e) =>
-                            setMint((prev) => {
-                              const newKeys = [...prev];
-                              newKeys[index].amount = e.target.value;
-                              return newKeys;
-                            })
-                          }
-                        />
-                      </div>
-                      <div className="w-2/3">
-                        {index === 0 && (
-                          <label
-                            htmlFor={`address-${index}`}
-                            className="block text-sm font-medium"
-                          >
-                            Address (B62...)
-                          </label>
-                        )}
-                        <Input
-                          id={`address-${index}`}
-                          type="text"
-                          placeholder="Address"
-                          className="bg-gray-800 border-[#F15B22] focus:ring-[#F15B22]"
-                          defaultValue={mint[index].to}
-                          onChange={(e) =>
-                            setMint((prev) => {
-                              const newKeys = [...prev];
-                              newKeys[index].to = e.target.value;
-                              return newKeys;
-                            })
-                          }
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
               <Button
                 className="w-full bg-[#F15B22] hover:bg-[#d14d1d] text-white"
                 onClick={handleIssueToken}
                 disabled={issuing}
               >
-                {metamask
-                  ? "Send Sepolia tx with MetaMask"
-                  : useTinyContract
-                  ? "Send tiny zkApp tx"
-                  : "Issue Token"}
+                Prove with o1js 1.9.1
               </Button>
             </div>
           )}
@@ -884,91 +554,9 @@ export default function LaunchToken() {
               ></Timeline>
             )}
           </div>
-          <div className="container mx-auto p-4 max-w-full">
-            {showIframe ? (
-              <div className="w-full mt-2">
-                <iframe
-                  src="https://two-o1js.minatokens.com/v1"
-                  style={{
-                    width: "800px",
-                    height: "500px",
-                    border: "none",
-                  }}
-                  sandbox="allow-scripts allow-same-origin"
-                />
-              </div>
-            ) : (
-              <Button
-                className="w-full bg-[#F15B22] hover:bg-[#d14d1d] text-white"
-                onClick={use_o1js_v1}
-              >
-                Load iframe with o1js 1.9.1
-              </Button>
-            )}
-          </div>
         </div>
       </div>
     </div>
-  );
-}
-
-function CameraIcon(props: any) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
-      <circle cx="12" cy="13" r="3" />
-    </svg>
-  );
-}
-
-function CloudLightningIcon(props: any) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M6 16.326A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 .5 8.973" />
-      <path d="m13 12-3 5h4l-3 5" />
-    </svg>
-  );
-}
-
-function PlusIcon(props: any) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M5 12h14" />
-      <path d="M12 5v14" />
-    </svg>
   );
 }
 
