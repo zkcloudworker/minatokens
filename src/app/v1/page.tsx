@@ -471,6 +471,7 @@ export default function LaunchToken() {
     }
 
     // if (!libraries) setLibraries(loadLibraries_v1());
+
     let adminPublicKey = ADMIN_ADDRESS;
 
     if (!useHardcodedWallet) {
