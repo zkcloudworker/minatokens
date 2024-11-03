@@ -549,7 +549,7 @@ export default function LaunchToken() {
           <div ref={bottomRef}>
             {(timelineItems.length > 0 || waitingItem) && (
               <Timeline
-                title="Token Issue Progress"
+                title="Proving with o1js 1.9.1"
                 items={timelineItems}
                 lastItem={waitingItem}
               ></Timeline>
